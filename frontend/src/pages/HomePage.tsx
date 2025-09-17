@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
-import { Plus, Search, Edit3, Trash2, Star, Folder, FolderOpen, Settings, Mic, Archive, ArchiveRestore, Tag, Keyboard, Download, FileText, BarChart3, Brain, Filter } from 'lucide-react'
+import { Plus, Search, Edit3, Trash2, Star, Folder, FolderOpen, Settings, Mic, Archive, ArchiveRestore, Tag, Keyboard, Download, FileText, BarChart3, Brain, Filter, User, LogOut } from 'lucide-react'
 import NoteEditor from '../components/NoteEditor'
 import FolderManager from '../components/FolderManager'
 import AudioRecorder from '../components/AudioRecorder'
@@ -12,11 +12,14 @@ import AnalyticsDashboard from '../components/AnalyticsDashboard'
 import SmartSuggestions from '../components/SmartSuggestions'
 import AdvancedSearch from '../components/AdvancedSearch'
 import OfflineStatus from '../components/OfflineStatus'
+import UserProfile from '../components/UserProfile'
+import ProtectedRoute from '../components/ProtectedRoute'
+import { useAuth } from '../contexts/AuthContext'
 import { useKeyboardShortcuts, createNoteShortcuts } from '../hooks/useKeyboardShortcuts'
 import { NoteTemplatesService, NoteTemplate } from '../services/noteTemplates'
 import { SmartSuggestion } from '../services/smartOrganization'
 
-const HomePage: React.FC = () => {
+const HomePageContent: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedNote, setSelectedNote] = useState<number | null>(null)
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null)
@@ -31,8 +34,10 @@ const HomePage: React.FC = () => {
   const [showAnalytics, setShowAnalytics] = useState(false)
   const [showSmartSuggestions, setShowSmartSuggestions] = useState(false)
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false)
+  const [showUserProfile, setShowUserProfile] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
+  const { user, logout } = useAuth()
 
   // Fetch notes
   const { data: notes, isLoading, error } = useQuery(
@@ -229,6 +234,13 @@ const HomePage: React.FC = () => {
                 <div className="mt-4 sm:mt-0 flex items-center space-x-2">
                   <OfflineStatus />
                   <ThemeToggle />
+                  <button
+                    onClick={() => setShowUserProfile(true)}
+                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
+                    title="User profile"
+                  >
+                    <User className="h-4 w-4" />
+                  </button>
                   <button
                 onClick={() => setShowKeyboardHelp(true)}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
@@ -652,8 +664,22 @@ const HomePage: React.FC = () => {
             setShowAdvancedSearch(false)
           }}
         />
+
+        {/* User Profile Modal */}
+        <UserProfile
+          isOpen={showUserProfile}
+          onClose={() => setShowUserProfile(false)}
+        />
       </div>
     </div>
+  )
+}
+
+const HomePage: React.FC = () => {
+  return (
+    <ProtectedRoute>
+      <HomePageContent />
+    </ProtectedRoute>
   )
 }
 
