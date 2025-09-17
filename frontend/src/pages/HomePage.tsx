@@ -11,6 +11,7 @@ import NoteTemplates from '../components/NoteTemplates'
 import AnalyticsDashboard from '../components/AnalyticsDashboard'
 import SmartSuggestions from '../components/SmartSuggestions'
 import AdvancedSearch from '../components/AdvancedSearch'
+import OfflineStatus from '../components/OfflineStatus'
 import { useKeyboardShortcuts, createNoteShortcuts } from '../hooks/useKeyboardShortcuts'
 import { NoteTemplatesService, NoteTemplate } from '../services/noteTemplates'
 import { SmartSuggestion } from '../services/smartOrganization'
@@ -225,9 +226,10 @@ const HomePage: React.FC = () => {
               )}
             </div>
             
-            <div className="mt-4 sm:mt-0 flex items-center space-x-2">
-              <ThemeToggle />
-              <button
+                <div className="mt-4 sm:mt-0 flex items-center space-x-2">
+                  <OfflineStatus />
+                  <ThemeToggle />
+                  <button
                 onClick={() => setShowKeyboardHelp(true)}
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
                 title="Keyboard shortcuts (Ctrl + ?)"
