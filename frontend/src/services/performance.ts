@@ -1,488 +1,290 @@
-export interface PerformanceMetric {
-  name: string
-  value: number
-  unit: string
-  timestamp: Date
-  category: 'navigation' | 'resource' | 'paint' | 'layout' | 'interaction' | 'custom'
+export interface PerformanceMetrics {
+  fcp: number | null // First Contentful Paint
+  lcp: number | null // Largest Contentful Paint
+  fid: number | null // First Input Delay
+  cls: number | null // Cumulative Layout Shift
+  tbt: number | null // Total Blocking Time
+  ttfb: number | null // Time to First Byte
+  loadTime: number | null
+  domContentLoaded: number | null
+  memoryUsage: number | null
+  timestamp: number
 }
 
-export interface PerformanceReport {
-  timestamp: Date
-  url: string
-  metrics: PerformanceMetric[]
-  summary: {
-    totalLoadTime: number
-    firstContentfulPaint: number
-    largestContentfulPaint: number
-    cumulativeLayoutShift: number
-    firstInputDelay: number
-    totalBlockingTime: number
-  }
-}
-
-export interface PerformanceConfig {
-  enableMonitoring: boolean
-  sampleRate: number
-  maxMetrics: number
-  reportInterval: number
-  enableWebVitals: boolean
-  enableResourceTiming: boolean
-  enableUserTiming: boolean
+export interface PerformanceRecommendation {
+  metric: string
+  current: number
+  threshold: number
+  status: 'good' | 'needs-improvement' | 'poor'
+  recommendation: string
+  priority: 'high' | 'medium' | 'low'
 }
 
 export class PerformanceService {
-  private static readonly STORAGE_KEY = 'note-app-performance'
-  private static readonly MAX_METRICS = 1000
-  private static readonly REPORT_INTERVAL = 30000 // 30 seconds
-  
-  private static config: PerformanceConfig = {
-    enableMonitoring: true,
-    sampleRate: 1.0,
-    maxMetrics: 1000,
-    reportInterval: 30000,
-    enableWebVitals: true,
-    enableResourceTiming: true,
-    enableUserTiming: true
-  }
-  
-  private static metrics: PerformanceMetric[] = []
-  private static listeners: ((report: PerformanceReport) => void)[] = []
-  private static reportTimer: NodeJS.Timeout | null = null
+  private static instance: PerformanceService
+  private metrics: PerformanceMetrics[] = []
+  private observers: PerformanceObserver[] = []
+  private isMonitoring: boolean = false
 
-  /**
-   * Initialize performance monitoring
-   */
-  static initialize(config?: Partial<PerformanceConfig>): void {
-    this.config = { ...this.config, ...config }
+  static getInstance(): PerformanceService {
+    if (!PerformanceService.instance) {
+      PerformanceService.instance = new PerformanceService()
+    }
+    return PerformanceService.instance
+  }
+
+  startMonitoring() {
+    if (this.isMonitoring) return
+    this.isMonitoring = true
+
+    // Monitor Web Vitals
+    this.observeWebVitals()
     
-    if (!this.config.enableMonitoring) return
-
-    // Load existing metrics
-    this.loadMetrics()
-
-    // Set up performance observers
-    this.setupPerformanceObservers()
-
-    // Set up periodic reporting
-    this.startPeriodicReporting()
-
-    // Set up page visibility change handler
-    this.setupVisibilityChangeHandler()
-
-    // Set up beforeunload handler
-    this.setupBeforeUnloadHandler()
+    // Monitor page load performance
+    this.observePageLoad()
+    
+    // Monitor memory usage
+    this.observeMemoryUsage()
+    
+    // Monitor long tasks
+    this.observeLongTasks()
   }
 
-  /**
-   * Set up performance observers
-   */
-  private static setupPerformanceObservers(): void {
-    if (!this.config.enableWebVitals) return
+  stopMonitoring() {
+    this.isMonitoring = false
+    this.observers.forEach(observer => observer.disconnect())
+    this.observers = []
+  }
 
-    // Navigation timing
+  private observeWebVitals() {
+    // First Contentful Paint
     if ('PerformanceObserver' in window) {
       try {
-        const navigationObserver = new PerformanceObserver((list) => {
+        const fcpObserver = new PerformanceObserver((list) => {
           const entries = list.getEntries()
-          entries.forEach(entry => {
-            this.recordMetric({
-              name: entry.name,
-              value: entry.duration,
-              unit: 'ms',
-              timestamp: new Date(entry.startTime),
-              category: 'navigation'
-            })
-          })
+          const fcpEntry = entries.find(entry => entry.name === 'first-contentful-paint')
+          if (fcpEntry) {
+            this.recordMetric('fcp', fcpEntry.startTime)
+          }
         })
-        navigationObserver.observe({ entryTypes: ['navigation'] })
-      } catch (error) {
-        console.warn('Failed to set up navigation observer:', error)
+        fcpObserver.observe({ entryTypes: ['paint'] })
+        this.observers.push(fcpObserver)
+      } catch (e) {
+        console.warn('FCP observer not supported:', e)
       }
 
-      // Paint timing
+      // Largest Contentful Paint
       try {
-        const paintObserver = new PerformanceObserver((list) => {
+        const lcpObserver = new PerformanceObserver((list) => {
           const entries = list.getEntries()
-          entries.forEach(entry => {
-            this.recordMetric({
-              name: entry.name,
-              value: entry.startTime,
-              unit: 'ms',
-              timestamp: new Date(),
-              category: 'paint'
-            })
-          })
+          const lastEntry = entries[entries.length - 1]
+          this.recordMetric('lcp', lastEntry.startTime)
         })
-        paintObserver.observe({ entryTypes: ['paint'] })
-      } catch (error) {
-        console.warn('Failed to set up paint observer:', error)
+        lcpObserver.observe({ entryTypes: ['largest-contentful-paint'] })
+        this.observers.push(lcpObserver)
+      } catch (e) {
+        console.warn('LCP observer not supported:', e)
       }
 
-      // Layout shift
-      try {
-        const layoutShiftObserver = new PerformanceObserver((list) => {
-          const entries = list.getEntries()
-          entries.forEach(entry => {
-            if (entry.hadRecentInput) return
-            
-            this.recordMetric({
-              name: 'layout-shift',
-              value: (entry as any).value,
-              unit: 'score',
-              timestamp: new Date(),
-              category: 'layout'
-            })
-          })
-        })
-        layoutShiftObserver.observe({ entryTypes: ['layout-shift'] })
-      } catch (error) {
-        console.warn('Failed to set up layout shift observer:', error)
-      }
-
-      // First input delay
+      // First Input Delay
       try {
         const fidObserver = new PerformanceObserver((list) => {
           const entries = list.getEntries()
           entries.forEach(entry => {
-            this.recordMetric({
-              name: 'first-input-delay',
-              value: (entry as any).processingStart - entry.startTime,
-              unit: 'ms',
-              timestamp: new Date(),
-              category: 'interaction'
-            })
+            if (entry.processingStart && entry.startTime) {
+              const fid = entry.processingStart - entry.startTime
+              this.recordMetric('fid', fid)
+            }
           })
         })
         fidObserver.observe({ entryTypes: ['first-input'] })
-      } catch (error) {
-        console.warn('Failed to set up FID observer:', error)
+        this.observers.push(fidObserver)
+      } catch (e) {
+        console.warn('FID observer not supported:', e)
       }
-    }
-  }
 
-  /**
-   * Record a custom performance metric
-   */
-  static recordMetric(metric: Omit<PerformanceMetric, 'timestamp'>): void {
-    if (!this.config.enableMonitoring) return
-    if (Math.random() > this.config.sampleRate) return
-
-    const fullMetric: PerformanceMetric = {
-      ...metric,
-      timestamp: new Date()
-    }
-
-    this.metrics.push(fullMetric)
-
-    // Limit metrics to max count
-    if (this.metrics.length > this.config.maxMetrics) {
-      this.metrics = this.metrics.slice(-this.config.maxMetrics)
-    }
-
-    // Save to localStorage
-    this.saveMetrics()
-  }
-
-  /**
-   * Record a custom timing
-   */
-  static startTiming(name: string): void {
-    if (!this.config.enableUserTiming) return
-    
-    performance.mark(`${name}-start`)
-  }
-
-  /**
-   * End a custom timing and record the metric
-   */
-  static endTiming(name: string, category: PerformanceMetric['category'] = 'custom'): void {
-    if (!this.config.enableUserTiming) return
-
-    try {
-      performance.mark(`${name}-end`)
-      performance.measure(name, `${name}-start`, `${name}-end`)
-      
-      const measure = performance.getEntriesByName(name)[0]
-      if (measure) {
-        this.recordMetric({
-          name,
-          value: measure.duration,
-          unit: 'ms',
-          category
+      // Cumulative Layout Shift
+      try {
+        const clsObserver = new PerformanceObserver((list) => {
+          let clsValue = 0
+          const entries = list.getEntries()
+          entries.forEach(entry => {
+            if (!entry.hadRecentInput) {
+              clsValue += entry.value
+            }
+          })
+          this.recordMetric('cls', clsValue)
         })
+        clsObserver.observe({ entryTypes: ['layout-shift'] })
+        this.observers.push(clsObserver)
+      } catch (e) {
+        console.warn('CLS observer not supported:', e)
       }
-    } catch (error) {
-      console.warn(`Failed to measure ${name}:`, error)
     }
   }
 
-  /**
-   * Record a resource timing
-   */
-  static recordResourceTiming(resource: PerformanceResourceTiming): void {
-    if (!this.config.enableResourceTiming) return
-
-    this.recordMetric({
-      name: `resource-${resource.name.split('/').pop()}`,
-      value: resource.duration,
-      unit: 'ms',
-      category: 'resource'
+  private observePageLoad() {
+    window.addEventListener('load', () => {
+      const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming
+      if (navigation) {
+        this.recordMetric('ttfb', navigation.responseStart - navigation.requestStart)
+        this.recordMetric('loadTime', navigation.loadEventEnd - navigation.fetchStart)
+        this.recordMetric('domContentLoaded', navigation.domContentLoadedEventEnd - navigation.fetchStart)
+      }
     })
   }
 
-  /**
-   * Get current performance metrics
-   */
-  static getMetrics(): PerformanceMetric[] {
+  private observeMemoryUsage() {
+    if ('memory' in performance) {
+      const memory = (performance as any).memory
+      const memoryUsage = memory.usedJSHeapSize / memory.jsHeapSizeLimit
+      this.recordMetric('memoryUsage', memoryUsage)
+    }
+  }
+
+  private observeLongTasks() {
+    if ('PerformanceObserver' in window) {
+      try {
+        const longTaskObserver = new PerformanceObserver((list) => {
+          const entries = list.getEntries()
+          let totalBlockingTime = 0
+          entries.forEach(entry => {
+            totalBlockingTime += entry.duration - 50 // Tasks over 50ms are considered blocking
+          })
+          this.recordMetric('tbt', totalBlockingTime)
+        })
+        longTaskObserver.observe({ entryTypes: ['longtask'] })
+        this.observers.push(longTaskObserver)
+      } catch (e) {
+        console.warn('Long task observer not supported:', e)
+      }
+    }
+  }
+
+  private recordMetric(metric: keyof PerformanceMetrics, value: number) {
+    const currentMetrics = this.getCurrentMetrics()
+    currentMetrics[metric] = value
+    currentMetrics.timestamp = Date.now()
+    this.metrics.push({ ...currentMetrics })
+  }
+
+  private getCurrentMetrics(): PerformanceMetrics {
+    return {
+      fcp: null,
+      lcp: null,
+      fid: null,
+      cls: null,
+      tbt: null,
+      ttfb: null,
+      loadTime: null,
+      domContentLoaded: null,
+      memoryUsage: null,
+      timestamp: Date.now()
+    }
+  }
+
+  getLatestMetrics(): PerformanceMetrics | null {
+    return this.metrics.length > 0 ? this.metrics[this.metrics.length - 1] : null
+  }
+
+  getAllMetrics(): PerformanceMetrics[] {
     return [...this.metrics]
   }
 
-  /**
-   * Get performance report
-   */
-  static getPerformanceReport(): PerformanceReport {
-    const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming
-    const paint = performance.getEntriesByType('paint')
-    
-    const fcp = paint.find(entry => entry.name === 'first-contentful-paint')
-    const lcp = performance.getEntriesByType('largest-contentful-paint')[0]
-    const cls = this.metrics.filter(m => m.name === 'layout-shift').reduce((sum, m) => sum + m.value, 0)
-    const fid = this.metrics.find(m => m.name === 'first-input-delay')?.value || 0
-    
-    // Calculate Total Blocking Time
-    const longTasks = performance.getEntriesByType('longtask')
-    const tbt = longTasks.reduce((sum, task) => sum + task.duration - 50, 0)
+  getAverageMetrics(): Partial<PerformanceMetrics> {
+    if (this.metrics.length === 0) return {}
 
-    return {
-      timestamp: new Date(),
-      url: window.location.href,
-      metrics: [...this.metrics],
-      summary: {
-        totalLoadTime: navigation ? navigation.loadEventEnd - navigation.fetchStart : 0,
-        firstContentfulPaint: fcp ? fcp.startTime : 0,
-        largestContentfulPaint: lcp ? (lcp as any).startTime : 0,
-        cumulativeLayoutShift: cls,
-        firstInputDelay: fid,
-        totalBlockingTime: tbt
-      }
-    }
+    const sums = this.metrics.reduce((acc, metric) => {
+      Object.keys(metric).forEach(key => {
+        if (key !== 'timestamp' && metric[key as keyof PerformanceMetrics] !== null) {
+          acc[key] = (acc[key] || 0) + (metric[key as keyof PerformanceMetrics] as number)
+        }
+      })
+      return acc
+    }, {} as Record<string, number>)
+
+    const averages: Partial<PerformanceMetrics> = {}
+    Object.keys(sums).forEach(key => {
+      const count = this.metrics.filter(m => m[key as keyof PerformanceMetrics] !== null).length
+      averages[key as keyof PerformanceMetrics] = count > 0 ? sums[key] / count : null
+    })
+
+    return averages
   }
 
-  /**
-   * Subscribe to performance reports
-   */
-  static subscribe(listener: (report: PerformanceReport) => void): () => void {
-    this.listeners.push(listener)
-    
-    return () => {
-      const index = this.listeners.indexOf(listener)
-      if (index > -1) {
-        this.listeners.splice(index, 1)
-      }
-    }
-  }
+  getRecommendations(): PerformanceRecommendation[] {
+    const latest = this.getLatestMetrics()
+    if (!latest) return []
 
-  /**
-   * Start periodic reporting
-   */
-  private static startPeriodicReporting(): void {
-    if (this.reportTimer) {
-      clearInterval(this.reportTimer)
+    const recommendations: PerformanceRecommendation[] = []
+
+    // FCP recommendations
+    if (latest.fcp !== null) {
+      const status = latest.fcp <= 1800 ? 'good' : latest.fcp <= 3000 ? 'needs-improvement' : 'poor'
+      recommendations.push({
+        metric: 'First Contentful Paint',
+        current: latest.fcp,
+        threshold: 1800,
+        status,
+        recommendation: status === 'good' ? 'FCP is excellent!' : 
+          'Optimize critical rendering path, reduce server response time, or minimize render-blocking resources.',
+        priority: status === 'poor' ? 'high' : status === 'needs-improvement' ? 'medium' : 'low'
+      })
     }
 
-    this.reportTimer = setInterval(() => {
-      this.generateReport()
-    }, this.config.reportInterval)
-  }
+    // LCP recommendations
+    if (latest.lcp !== null) {
+      const status = latest.lcp <= 2500 ? 'good' : latest.lcp <= 4000 ? 'needs-improvement' : 'poor'
+      recommendations.push({
+        metric: 'Largest Contentful Paint',
+        current: latest.lcp,
+        threshold: 2500,
+        status,
+        recommendation: status === 'good' ? 'LCP is excellent!' : 
+          'Optimize images, remove unused CSS/JS, or improve server response time.',
+        priority: status === 'poor' ? 'high' : status === 'needs-improvement' ? 'medium' : 'low'
+      })
+    }
 
-  /**
-   * Generate and send performance report
-   */
-  private static generateReport(): void {
-    const report = this.getPerformanceReport()
-    
-    this.listeners.forEach(listener => {
-      try {
-        listener(report)
-      } catch (error) {
-        console.error('Error in performance report listener:', error)
-      }
+    // FID recommendations
+    if (latest.fid !== null) {
+      const status = latest.fid <= 100 ? 'good' : latest.fid <= 300 ? 'needs-improvement' : 'poor'
+      recommendations.push({
+        metric: 'First Input Delay',
+        current: latest.fid,
+        threshold: 100,
+        status,
+        recommendation: status === 'good' ? 'FID is excellent!' : 
+          'Break up long tasks, optimize JavaScript execution, or use web workers.',
+        priority: status === 'poor' ? 'high' : status === 'needs-improvement' ? 'medium' : 'low'
+      })
+    }
+
+    // CLS recommendations
+    if (latest.cls !== null) {
+      const status = latest.cls <= 0.1 ? 'good' : latest.cls <= 0.25 ? 'needs-improvement' : 'poor'
+      recommendations.push({
+        metric: 'Cumulative Layout Shift',
+        current: latest.cls,
+        threshold: 0.1,
+        status,
+        recommendation: status === 'good' ? 'CLS is excellent!' : 
+          'Add size attributes to images/videos, avoid inserting content above existing content.',
+        priority: status === 'poor' ? 'high' : status === 'needs-improvement' ? 'medium' : 'low'
+      })
+    }
+
+    return recommendations.sort((a, b) => {
+      const priorityOrder = { high: 3, medium: 2, low: 1 }
+      return priorityOrder[b.priority] - priorityOrder[a.priority]
     })
   }
 
-  /**
-   * Set up page visibility change handler
-   */
-  private static setupVisibilityChangeHandler(): void {
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') {
-        this.generateReport()
-      }
-    })
-  }
-
-  /**
-   * Set up beforeunload handler
-   */
-  private static setupBeforeUnloadHandler(): void {
-    window.addEventListener('beforeunload', () => {
-      this.generateReport()
-    })
-  }
-
-  /**
-   * Load metrics from localStorage
-   */
-  private static loadMetrics(): void {
-    try {
-      const stored = localStorage.getItem(this.STORAGE_KEY)
-      if (stored) {
-        const data = JSON.parse(stored)
-        this.metrics = data.metrics.map((m: any) => ({
-          ...m,
-          timestamp: new Date(m.timestamp)
-        }))
-      }
-    } catch (error) {
-      console.warn('Failed to load performance metrics:', error)
-      this.metrics = []
-    }
-  }
-
-  /**
-   * Save metrics to localStorage
-   */
-  private static saveMetrics(): void {
-    try {
-      const data = {
-        metrics: this.metrics,
-        timestamp: new Date()
-      }
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data))
-    } catch (error) {
-      console.warn('Failed to save performance metrics:', error)
-    }
-  }
-
-  /**
-   * Clear all metrics
-   */
-  static clearMetrics(): void {
+  clearMetrics() {
     this.metrics = []
-    localStorage.removeItem(this.STORAGE_KEY)
   }
 
-  /**
-   * Get performance score
-   */
-  static getPerformanceScore(): number {
-    const report = this.getPerformanceReport()
-    const { summary } = report
-
-    // Calculate score based on Core Web Vitals
-    let score = 100
-
-    // First Contentful Paint (FCP) - Good: < 1.8s, Needs Improvement: 1.8s - 3.0s, Poor: > 3.0s
-    if (summary.firstContentfulPaint > 3000) score -= 30
-    else if (summary.firstContentfulPaint > 1800) score -= 15
-
-    // Largest Contentful Paint (LCP) - Good: < 2.5s, Needs Improvement: 2.5s - 4.0s, Poor: > 4.0s
-    if (summary.largestContentfulPaint > 4000) score -= 30
-    else if (summary.largestContentfulPaint > 2500) score -= 15
-
-    // Cumulative Layout Shift (CLS) - Good: < 0.1, Needs Improvement: 0.1 - 0.25, Poor: > 0.25
-    if (summary.cumulativeLayoutShift > 0.25) score -= 20
-    else if (summary.cumulativeLayoutShift > 0.1) score -= 10
-
-    // First Input Delay (FID) - Good: < 100ms, Needs Improvement: 100ms - 300ms, Poor: > 300ms
-    if (summary.firstInputDelay > 300) score -= 20
-    else if (summary.firstInputDelay > 100) score -= 10
-
-    return Math.max(0, Math.min(100, score))
-  }
-
-  /**
-   * Get performance recommendations
-   */
-  static getPerformanceRecommendations(): string[] {
-    const report = this.getPerformanceReport()
-    const { summary } = report
-    const recommendations: string[] = []
-
-    if (summary.firstContentfulPaint > 1800) {
-      recommendations.push('Optimize First Contentful Paint by reducing server response time and eliminating render-blocking resources')
-    }
-
-    if (summary.largestContentfulPaint > 2500) {
-      recommendations.push('Improve Largest Contentful Paint by optimizing images and removing unused CSS')
-    }
-
-    if (summary.cumulativeLayoutShift > 0.1) {
-      recommendations.push('Reduce Cumulative Layout Shift by setting size attributes on images and avoiding dynamically injected content')
-    }
-
-    if (summary.firstInputDelay > 100) {
-      recommendations.push('Improve First Input Delay by reducing JavaScript execution time and breaking up long tasks')
-    }
-
-    if (summary.totalBlockingTime > 200) {
-      recommendations.push('Reduce Total Blocking Time by optimizing JavaScript and using code splitting')
-    }
-
-    if (summary.totalLoadTime > 3000) {
-      recommendations.push('Optimize total load time by enabling compression and using a CDN')
-    }
-
-    return recommendations
-  }
-
-  /**
-   * Export performance data
-   */
-  static exportPerformanceData(): string {
-    const report = this.getPerformanceReport()
-    return JSON.stringify(report, null, 2)
-  }
-
-  /**
-   * Get performance summary
-   */
-  static getPerformanceSummary(): {
-    score: number
-    grade: string
-    recommendations: string[]
-    metrics: {
-      fcp: number
-      lcp: number
-      cls: number
-      fid: number
-      tbt: number
-      loadTime: number
-    }
-  } {
-    const report = this.getPerformanceReport()
-    const score = this.getPerformanceScore()
-    const recommendations = this.getPerformanceRecommendations()
-    
-    let grade: string
-    if (score >= 90) grade = 'A'
-    else if (score >= 80) grade = 'B'
-    else if (score >= 70) grade = 'C'
-    else if (score >= 60) grade = 'D'
-    else grade = 'F'
-
-    return {
-      score,
-      grade,
-      recommendations,
-      metrics: {
-        fcp: report.summary.firstContentfulPaint,
-        lcp: report.summary.largestContentfulPaint,
-        cls: report.summary.cumulativeLayoutShift,
-        fid: report.summary.firstInputDelay,
-        tbt: report.summary.totalBlockingTime,
-        loadTime: report.summary.totalLoadTime
-      }
-    }
+  exportMetrics(): string {
+    return JSON.stringify(this.metrics, null, 2)
   }
 }

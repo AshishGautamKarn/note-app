@@ -1,278 +1,207 @@
-import { Note, Folder } from '../types'
-
-export interface NoteStats {
+export interface AnalyticsData {
   totalNotes: number
   totalFolders: number
   totalWords: number
-  totalCharacters: number
   averageWordsPerNote: number
-  averageCharactersPerNote: number
-  notesByFolder: { [folderId: string]: number }
-  notesByTag: { [tag: string]: number }
-  notesByMonth: { [month: string]: number }
-  favoriteNotes: number
-  archivedNotes: number
-  recentActivity: {
-    date: string
-    notesCreated: number
-    notesUpdated: number
-    notesDeleted: number
-  }[]
-}
-
-export interface SearchResult {
-  note: Note
-  score: number
-  matchedFields: string[]
-  highlights: {
-    title: string
-    content: string
+  notesByMonth: { month: string; count: number }[]
+  wordsByMonth: { month: string; words: number }[]
+  topFolders: { name: string; count: number }[]
+  recentActivity: { date: string; action: string; note: string }[]
+  productivityStats: {
+    notesThisWeek: number
+    notesThisMonth: number
+    averageNotesPerDay: number
+    mostProductiveDay: string
+  }
+  contentInsights: {
+    longestNote: { title: string; wordCount: number }
+    shortestNote: { title: string; wordCount: number }
+    mostUsedWords: { word: string; count: number }[]
+    averageNoteLength: number
   }
 }
 
 export class AnalyticsService {
-  /**
-   * Calculate comprehensive statistics for notes and folders
-   */
-  static calculateStats(notes: Note[], folders: Folder[]): NoteStats {
+  static calculateAnalytics(notes: any[], folders: any[]): AnalyticsData {
+    const now = new Date()
+    const currentMonth = now.getMonth()
+    const currentYear = now.getFullYear()
+    
+    // Basic counts
     const totalNotes = notes.length
     const totalFolders = folders.length
-    
-    // Word and character counts
-    const totalWords = notes.reduce((sum, note) => {
-      const content = note.content || ''
-      const words = content.split(/\s+/).filter(word => word.length > 0)
-      return sum + words.length
-    }, 0)
-    
-    const totalCharacters = notes.reduce((sum, note) => {
-      return sum + (note.content || '').length
-    }, 0)
-    
+    const totalWords = notes.reduce((sum, note) => sum + (note.word_count || 0), 0)
     const averageWordsPerNote = totalNotes > 0 ? Math.round(totalWords / totalNotes) : 0
-    const averageCharactersPerNote = totalNotes > 0 ? Math.round(totalCharacters / totalNotes) : 0
-    
-    // Notes by folder
-    const notesByFolder: { [folderId: string]: number } = {}
-    notes.forEach(note => {
-      const folderId = note.folder_id?.toString() || 'no-folder'
-      notesByFolder[folderId] = (notesByFolder[folderId] || 0) + 1
-    })
-    
-    // Notes by tag
-    const notesByTag: { [tag: string]: number } = {}
-    notes.forEach(note => {
-      if (note.tags) {
-        note.tags.forEach(tag => {
-          notesByTag[tag] = (notesByTag[tag] || 0) + 1
-        })
-      }
-    })
-    
-    // Notes by month
-    const notesByMonth: { [month: string]: number } = {}
-    notes.forEach(note => {
-      const date = new Date(note.created_at)
-      const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-      notesByMonth[month] = (notesByMonth[month] || 0) + 1
-    })
-    
-    // Favorites and archived
-    const favoriteNotes = notes.filter(note => note.is_favorite).length
-    const archivedNotes = notes.filter(note => note.is_archived).length
-    
+
+    // Notes by month (last 12 months)
+    const notesByMonth = this.getNotesByMonth(notes, 12)
+    const wordsByMonth = this.getWordsByMonth(notes, 12)
+
+    // Top folders
+    const topFolders = this.getTopFolders(notes, folders)
+
     // Recent activity (last 30 days)
-    const recentActivity = this.calculateRecentActivity(notes)
-    
+    const recentActivity = this.getRecentActivity(notes)
+
+    // Productivity stats
+    const productivityStats = this.getProductivityStats(notes)
+
+    // Content insights
+    const contentInsights = this.getContentInsights(notes)
+
     return {
       totalNotes,
       totalFolders,
       totalWords,
-      totalCharacters,
       averageWordsPerNote,
-      averageCharactersPerNote,
-      notesByFolder,
-      notesByTag,
       notesByMonth,
-      favoriteNotes,
-      archivedNotes,
-      recentActivity
+      wordsByMonth,
+      topFolders,
+      recentActivity,
+      productivityStats,
+      contentInsights
     }
   }
-  
-  /**
-   * Calculate recent activity for the last 30 days
-   */
-  private static calculateRecentActivity(notes: Note[]): NoteStats['recentActivity'] {
-    const activity: { [date: string]: { notesCreated: number; notesUpdated: number; notesDeleted: number } } = {}
+
+  private static getNotesByMonth(notes: any[], months: number): { month: string; count: number }[] {
+    const data: { [key: string]: number } = {}
+    const now = new Date()
+    
+    // Initialize last 12 months with 0
+    for (let i = 0; i < months; i++) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      data[key] = 0
+    }
+
+    // Count notes by month
+    notes.forEach(note => {
+      const date = new Date(note.created_at)
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      if (data.hasOwnProperty(key)) {
+        data[key]++
+      }
+    })
+
+    return Object.entries(data)
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => a.month.localeCompare(b.month))
+  }
+
+  private static getWordsByMonth(notes: any[], months: number): { month: string; words: number }[] {
+    const data: { [key: string]: number } = {}
+    const now = new Date()
+    
+    // Initialize last 12 months with 0
+    for (let i = 0; i < months; i++) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      data[key] = 0
+    }
+
+    // Sum words by month
+    notes.forEach(note => {
+      const date = new Date(note.created_at)
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      if (data.hasOwnProperty(key)) {
+        data[key] += note.word_count || 0
+      }
+    })
+
+    return Object.entries(data)
+      .map(([month, words]) => ({ month, words }))
+      .sort((a, b) => a.month.localeCompare(b.month))
+  }
+
+  private static getTopFolders(notes: any[], folders: any[]): { name: string; count: number }[] {
+    const folderCounts: { [key: string]: number } = {}
+    
+    // Count notes per folder
+    notes.forEach(note => {
+      if (note.folder_name) {
+        folderCounts[note.folder_name] = (folderCounts[note.folder_name] || 0) + 1
+      }
+    })
+
+    return Object.entries(folderCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5)
+  }
+
+  private static getRecentActivity(notes: any[]): { date: string; action: string; note: string }[] {
+    const activities: { date: string; action: string; note: string }[] = []
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-    
-    notes.forEach(note => {
-      const createdDate = new Date(note.created_at)
-      const updatedDate = new Date(note.updated_at)
-      
-      if (createdDate >= thirtyDaysAgo) {
-        const dateKey = createdDate.toISOString().split('T')[0]
-        if (!activity[dateKey]) {
-          activity[dateKey] = { notesCreated: 0, notesUpdated: 0, notesDeleted: 0 }
-        }
-        activity[dateKey].notesCreated++
-      }
-      
-      if (updatedDate >= thirtyDaysAgo && updatedDate.getTime() !== createdDate.getTime()) {
-        const dateKey = updatedDate.toISOString().split('T')[0]
-        if (!activity[dateKey]) {
-          activity[dateKey] = { notesCreated: 0, notesUpdated: 0, notesDeleted: 0 }
-        }
-        activity[dateKey].notesUpdated++
-      }
-    })
-    
-    return Object.entries(activity)
-      .map(([date, counts]) => ({ date, ...counts }))
-      .sort((a, b) => a.date.localeCompare(b.date))
-  }
-  
-  /**
-   * Advanced search with scoring and highlighting
-   */
-  static searchNotes(notes: Note[], query: string): SearchResult[] {
-    if (!query.trim()) return []
-    
-    const searchTerms = query.toLowerCase().split(/\s+/).filter(term => term.length > 0)
-    const results: SearchResult[] = []
-    
-    notes.forEach(note => {
-      let score = 0
-      const matchedFields: string[] = []
-      const highlights = { title: note.title || '', content: note.content || '' }
-      
-      // Search in title
-      const titleLower = (note.title || '').toLowerCase()
-      searchTerms.forEach(term => {
-        if (titleLower.includes(term)) {
-          score += 10 // High weight for title matches
-          matchedFields.push('title')
-          highlights.title = this.highlightText(highlights.title, term)
-        }
+
+    notes
+      .filter(note => new Date(note.created_at) >= thirtyDaysAgo)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 10)
+      .forEach(note => {
+        activities.push({
+          date: new Date(note.created_at).toLocaleDateString(),
+          action: 'Created',
+          note: note.title
+        })
       })
-      
-      // Search in content
-      const contentLower = (note.content || '').toLowerCase()
-      searchTerms.forEach(term => {
-        if (contentLower.includes(term)) {
-          score += 5 // Medium weight for content matches
-          matchedFields.push('content')
-          highlights.content = this.highlightText(highlights.content, term)
-        }
-      })
-      
-      // Search in tags
-      if (note.tags) {
-        note.tags.forEach(tag => {
-          const tagLower = tag.toLowerCase()
-          searchTerms.forEach(term => {
-            if (tagLower.includes(term)) {
-              score += 8 // High weight for tag matches
-              matchedFields.push('tags')
-            }
-          })
-        })
-      }
-      
-      // Boost score for exact matches
-      if (titleLower === query.toLowerCase()) {
-        score += 20
-      }
-      
-      if (score > 0) {
-        results.push({
-          note,
-          score,
-          matchedFields: [...new Set(matchedFields)],
-          highlights
-        })
-      }
-    })
-    
-    // Sort by score (highest first)
-    return results.sort((a, b) => b.score - a.score)
+
+    return activities
   }
-  
-  /**
-   * Highlight search terms in text
-   */
-  private static highlightText(text: string, term: string): string {
-    const regex = new RegExp(`(${term})`, 'gi')
-    return text.replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-800 px-1 rounded">$1</mark>')
-  }
-  
-  /**
-   * Get top tags by usage
-   */
-  static getTopTags(notes: Note[], limit: number = 10): { tag: string; count: number }[] {
-    const tagCounts: { [tag: string]: number } = {}
-    
-    notes.forEach(note => {
-      if (note.tags) {
-        note.tags.forEach(tag => {
-          tagCounts[tag] = (tagCounts[tag] || 0) + 1
-        })
-      }
-    })
-    
-    return Object.entries(tagCounts)
-      .map(([tag, count]) => ({ tag, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, limit)
-  }
-  
-  /**
-   * Get productivity insights
-   */
-  static getProductivityInsights(notes: Note[]): {
-    mostProductiveDay: string
-    averageNotesPerDay: number
-    longestNote: Note | null
-    shortestNote: Note | null
-    mostUsedWords: { word: string; count: number }[]
-  } {
-    if (notes.length === 0) {
-      return {
-        mostProductiveDay: 'N/A',
-        averageNotesPerDay: 0,
-        longestNote: null,
-        shortestNote: null,
-        mostUsedWords: []
-      }
-    }
-    
-    // Most productive day of week
-    const dayCounts: { [day: string]: number } = {}
+
+  private static getProductivityStats(notes: any[]): any {
+    const now = new Date()
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+
+    const notesThisWeek = notes.filter(note => new Date(note.created_at) >= weekAgo).length
+    const notesThisMonth = notes.filter(note => new Date(note.created_at) >= monthAgo).length
+    const averageNotesPerDay = notesThisMonth > 0 ? Math.round(notesThisMonth / 30) : 0
+
+    // Find most productive day of the week
+    const dayCounts: { [key: string]: number } = {}
     notes.forEach(note => {
       const day = new Date(note.created_at).toLocaleDateString('en-US', { weekday: 'long' })
       dayCounts[day] = (dayCounts[day] || 0) + 1
     })
+
     const mostProductiveDay = Object.entries(dayCounts)
-      .sort(([,a], [,b]) => b - a)[0]?.[0] || 'N/A'
-    
-    // Average notes per day
-    const firstNote = new Date(Math.min(...notes.map(n => new Date(n.created_at).getTime())))
-    const lastNote = new Date(Math.max(...notes.map(n => new Date(n.created_at).getTime())))
-    const daysDiff = Math.ceil((lastNote.getTime() - firstNote.getTime()) / (1000 * 60 * 60 * 24)) + 1
-    const averageNotesPerDay = daysDiff > 0 ? Math.round(notes.length / daysDiff * 10) / 10 : 0
-    
-    // Longest and shortest notes
-    const sortedByLength = [...notes].sort((a, b) => (b.content || '').length - (a.content || '').length)
-    const longestNote = sortedByLength[0] || null
-    const shortestNote = sortedByLength[sortedByLength.length - 1] || null
-    
-    // Most used words
-    const wordCounts: { [word: string]: number } = {}
+      .sort(([, a], [, b]) => b - a)[0]?.[0] || 'Monday'
+
+    return {
+      notesThisWeek,
+      notesThisMonth,
+      averageNotesPerDay,
+      mostProductiveDay
+    }
+  }
+
+  private static getContentInsights(notes: any[]): any {
+    if (notes.length === 0) {
+      return {
+        longestNote: { title: 'No notes', wordCount: 0 },
+        shortestNote: { title: 'No notes', wordCount: 0 },
+        mostUsedWords: [],
+        averageNoteLength: 0
+      }
+    }
+
+    // Find longest and shortest notes
+    const sortedByLength = [...notes].sort((a, b) => (b.word_count || 0) - (a.word_count || 0))
+    const longestNote = {
+      title: sortedByLength[0].title,
+      wordCount: sortedByLength[0].word_count || 0
+    }
+    const shortestNote = {
+      title: sortedByLength[sortedByLength.length - 1].title,
+      wordCount: sortedByLength[sortedByLength.length - 1].word_count || 0
+    }
+
+    // Most used words (simple implementation)
+    const wordCounts: { [key: string]: number } = {}
     notes.forEach(note => {
       const words = (note.content || '').toLowerCase()
-        .replace(/[^\w\s]/g, ' ')
+        .replace(/[^\w\s]/g, '')
         .split(/\s+/)
         .filter(word => word.length > 3)
       
@@ -280,38 +209,21 @@ export class AnalyticsService {
         wordCounts[word] = (wordCounts[word] || 0) + 1
       })
     })
-    
+
     const mostUsedWords = Object.entries(wordCounts)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
       .map(([word, count]) => ({ word, count }))
-    
+
+    const averageNoteLength = Math.round(
+      notes.reduce((sum, note) => sum + (note.word_count || 0), 0) / notes.length
+    )
+
     return {
-      mostProductiveDay,
-      averageNotesPerDay,
       longestNote,
       shortestNote,
-      mostUsedWords
+      mostUsedWords,
+      averageNoteLength
     }
-  }
-  
-  /**
-   * Export analytics data
-   */
-  static exportAnalytics(stats: NoteStats, insights: ReturnType<typeof this.getProductivityInsights>): string {
-    const data = {
-      generatedAt: new Date().toISOString(),
-      statistics: stats,
-      insights,
-      summary: {
-        totalNotes: stats.totalNotes,
-        totalWords: stats.totalWords,
-        averageWordsPerNote: stats.averageWordsPerNote,
-        mostProductiveDay: insights.mostProductiveDay,
-        averageNotesPerDay: insights.averageNotesPerDay
-      }
-    }
-    
-    return JSON.stringify(data, null, 2)
   }
 }

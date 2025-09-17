@@ -2,48 +2,43 @@ export interface NoteTemplate {
   id: string
   name: string
   description: string
-  category: string
   content: string
-  tags: string[]
-  icon: string
-  isBuiltIn: boolean
+  category: string
+  variables?: string[]
 }
 
 export class NoteTemplatesService {
-  private static readonly STORAGE_KEY = 'note-app-templates'
-  private static readonly BUILT_IN_TEMPLATES: NoteTemplate[] = [
+  private static templates: NoteTemplate[] = [
     {
       id: 'meeting-notes',
       name: 'Meeting Notes',
-      description: 'Template for recording meeting discussions and action items',
+      description: 'Template for recording meeting notes',
       category: 'Work',
-      content: `# Meeting Notes
+      content: `# Meeting Notes - {{meeting_topic}}
 
 **Date:** {{date}}
 **Attendees:** {{attendees}}
-**Location:** {{location}}
+**Duration:** {{duration}}
 
 ## Agenda
-- 
-- 
-- 
+- {{agenda_item_1}}
+- {{agenda_item_2}}
+- {{agenda_item_3}}
 
 ## Discussion Points
-- 
-- 
-- 
+- {{discussion_point_1}}
+- {{discussion_point_2}}
 
 ## Action Items
-- [ ] 
-- [ ] 
-- [ ] 
+- [ ] {{action_item_1}} - {{assignee_1}} - {{due_date_1}}
+- [ ] {{action_item_2}} - {{assignee_2}} - {{due_date_2}}
 
-## Next Meeting
-**Date:** 
-**Agenda:** `,
-      tags: ['meeting', 'work', 'notes'],
-      icon: '📝',
-      isBuiltIn: true
+## Next Steps
+{{next_steps}}
+
+## Notes
+{{additional_notes}}`,
+      variables: ['meeting_topic', 'date', 'attendees', 'duration', 'agenda_item_1', 'agenda_item_2', 'agenda_item_3', 'discussion_point_1', 'discussion_point_2', 'action_item_1', 'assignee_1', 'due_date_1', 'action_item_2', 'assignee_2', 'due_date_2', 'next_steps', 'additional_notes']
     },
     {
       id: 'daily-journal',
@@ -53,343 +48,203 @@ export class NoteTemplatesService {
       content: `# Daily Journal - {{date}}
 
 ## Today's Highlights
-- 
-- 
-- 
+{{highlights}}
 
 ## What I Learned
-- 
-- 
-- 
+{{learnings}}
 
 ## Challenges Faced
-- 
-- 
-- 
-
-## Tomorrow's Goals
-- [ ] 
-- [ ] 
-- [ ] 
+{{challenges}}
 
 ## Gratitude
-- 
-- 
-- 
+{{gratitude}}
+
+## Tomorrow's Goals
+- {{goal_1}}
+- {{goal_2}}
+- {{goal_3}}
+
+## Mood
+{{mood}}/10
 
 ## Notes
-`,
-      tags: ['journal', 'personal', 'reflection'],
-      icon: '📔',
-      isBuiltIn: true
+{{additional_thoughts}}`,
+      variables: ['date', 'highlights', 'learnings', 'challenges', 'gratitude', 'goal_1', 'goal_2', 'goal_3', 'mood', 'additional_thoughts']
     },
     {
       id: 'project-plan',
       name: 'Project Plan',
-      description: 'Template for planning and tracking project progress',
+      description: 'Template for planning new projects',
       category: 'Work',
-      content: `# Project: {{projectName}}
+      content: `# Project: {{project_name}}
 
-**Start Date:** {{startDate}}
-**End Date:** {{endDate}}
-**Status:** {{status}}
+## Overview
+{{project_description}}
 
-## Project Overview
-{{projectDescription}}
-
-## Goals & Objectives
-- 
-- 
-- 
-
-## Key Deliverables
-- [ ] 
-- [ ] 
-- [ ] 
+## Goals
+- {{goal_1}}
+- {{goal_2}}
+- {{goal_3}}
 
 ## Timeline
-| Phase | Start Date | End Date | Status |
-|-------|------------|----------|--------|
-| Planning | | | |
-| Development | | | |
-| Testing | | | |
-| Launch | | | |
+- **Start Date:** {{start_date}}
+- **End Date:** {{end_date}}
+- **Milestones:**
+  - {{milestone_1}} - {{milestone_1_date}}
+  - {{milestone_2}} - {{milestone_2_date}}
+  - {{milestone_3}} - {{milestone_3_date}}
 
 ## Resources Needed
-- 
-- 
-- 
+- {{resource_1}}
+- {{resource_2}}
+- {{resource_3}}
+
+## Team Members
+- {{team_member_1}} - {{role_1}}
+- {{team_member_2}} - {{role_2}}
 
 ## Risks & Mitigation
-| Risk | Impact | Probability | Mitigation |
-|------|--------|-------------|------------|
-| | | | |
+- **Risk:** {{risk_1}} | **Mitigation:** {{mitigation_1}}
+- **Risk:** {{risk_2}} | **Mitigation:** {{mitigation_2}}
 
-## Notes
-`,
-      tags: ['project', 'planning', 'work'],
-      icon: '📋',
-      isBuiltIn: true
+## Success Criteria
+{{success_criteria}}`,
+      variables: ['project_name', 'project_description', 'goal_1', 'goal_2', 'goal_3', 'start_date', 'end_date', 'milestone_1', 'milestone_1_date', 'milestone_2', 'milestone_2_date', 'milestone_3', 'milestone_3_date', 'resource_1', 'resource_2', 'resource_3', 'team_member_1', 'role_1', 'team_member_2', 'role_2', 'risk_1', 'mitigation_1', 'risk_2', 'mitigation_2', 'success_criteria']
     },
     {
-      id: 'book-notes',
-      name: 'Book Notes',
-      description: 'Template for taking notes while reading books',
-      category: 'Learning',
-      content: `# {{bookTitle}} - {{author}}
+      id: 'book-review',
+      name: 'Book Review',
+      description: 'Template for reviewing books',
+      category: 'Personal',
+      content: `# Book Review: {{book_title}}
 
-**Reading Date:** {{date}}
-**Rating:** {{rating}}/5
+**Author:** {{author}}
 **Genre:** {{genre}}
+**Pages:** {{pages}}
+**Rating:** {{rating}}/5
 
 ## Summary
 {{summary}}
 
-## Key Concepts
-- 
-- 
-- 
+## Key Takeaways
+- {{takeaway_1}}
+- {{takeaway_2}}
+- {{takeaway_3}}
 
-## Important Quotes
-> 
+## What I Liked
+{{liked}}
 
-> 
+## What I Didn't Like
+{{disliked}}
 
-> 
+## Favorite Quotes
+> {{quote_1}}
 
-## Personal Insights
-- 
-- 
-- 
+> {{quote_2}}
 
-## Action Items
-- [ ] 
-- [ ] 
-- [ ] 
-
-## Related Books
-- 
-- 
-- 
+## Would I Recommend?
+{{recommendation}}
 
 ## Notes
-`,
-      tags: ['book', 'reading', 'learning'],
-      icon: '📚',
-      isBuiltIn: true
+{{additional_notes}}`,
+      variables: ['book_title', 'author', 'genre', 'pages', 'rating', 'summary', 'takeaway_1', 'takeaway_2', 'takeaway_3', 'liked', 'disliked', 'quote_1', 'quote_2', 'recommendation', 'additional_notes']
     },
     {
-      id: 'idea-brainstorm',
-      name: 'Idea Brainstorm',
-      description: 'Template for brainstorming and capturing creative ideas',
+      id: 'idea-capture',
+      name: 'Idea Capture',
+      description: 'Template for capturing and developing ideas',
       category: 'Creative',
-      content: `# Brainstorming: {{topic}}
+      content: `# Idea: {{idea_title}}
 
-**Date:** {{date}}
-**Participants:** {{participants}}
+## The Idea
+{{idea_description}}
 
-## Problem Statement
-{{problemStatement}}
+## Why This Matters
+{{why_matters}}
 
-## Initial Ideas
-- 
-- 
-- 
+## Target Audience
+{{target_audience}}
 
-## Refined Ideas
-- 
-- 
-- 
+## Implementation Steps
+1. {{step_1}}
+2. {{step_2}}
+3. {{step_3}}
+4. {{step_4}}
 
-## Evaluation Criteria
-- 
-- 
-- 
+## Resources Needed
+- {{resource_1}}
+- {{resource_2}}
+- {{resource_3}}
 
-## Top Ideas
-1. 
-2. 
-3. 
+## Potential Challenges
+- {{challenge_1}}
+- {{challenge_2}}
 
-## Next Steps
-- [ ] 
-- [ ] 
-- [ ] 
+## Success Metrics
+- {{metric_1}}
+- {{metric_2}}
 
-## Additional Notes
-`,
-      tags: ['brainstorm', 'ideas', 'creative'],
-      icon: '💡',
-      isBuiltIn: true
-    },
-    {
-      id: 'travel-plan',
-      name: 'Travel Plan',
-      description: 'Template for planning and documenting travel experiences',
-      category: 'Personal',
-      content: `# Travel: {{destination}}
+## Next Actions
+- [ ] {{action_1}}
+- [ ] {{action_2}}
+- [ ] {{action_3}}
 
-**Dates:** {{startDate}} - {{endDate}}
-**Travelers:** {{travelers}}
-
-## Itinerary
-| Date | Location | Activities | Accommodation |
-|------|----------|------------|---------------|
-| | | | |
-| | | | |
-| | | | |
-
-## Packing List
-- [ ] 
-- [ ] 
-- [ ] 
-
-## Important Information
-- **Emergency Contacts:** 
-- **Travel Insurance:** 
-- **Passport/Visa:** 
-- **Currency:** 
-
-## Budget
-| Category | Budget | Actual | Notes |
-|----------|--------|--------|-------|
-| Flights | | | |
-| Accommodation | | | |
-| Food | | | |
-| Activities | | | |
-
-## Notes & Tips
-`,
-      tags: ['travel', 'planning', 'personal'],
-      icon: '✈️',
-      isBuiltIn: true
+## Notes
+{{additional_thoughts}}`,
+      variables: ['idea_title', 'idea_description', 'why_matters', 'target_audience', 'step_1', 'step_2', 'step_3', 'step_4', 'resource_1', 'resource_2', 'resource_3', 'challenge_1', 'challenge_2', 'metric_1', 'metric_2', 'action_1', 'action_2', 'action_3', 'additional_thoughts']
     }
   ]
 
-  /**
-   * Get all available templates
-   */
-  static getTemplates(): NoteTemplate[] {
-    const customTemplates = this.getCustomTemplates()
-    return [...this.BUILT_IN_TEMPLATES, ...customTemplates]
+  static getAllTemplates(): NoteTemplate[] {
+    return this.templates
   }
 
-  /**
-   * Get templates by category
-   */
   static getTemplatesByCategory(category: string): NoteTemplate[] {
-    return this.getTemplates().filter(template => template.category === category)
+    return this.templates.filter(template => template.category === category)
   }
 
-  /**
-   * Get template by ID
-   */
   static getTemplateById(id: string): NoteTemplate | undefined {
-    return this.getTemplates().find(template => template.id === id)
+    return this.templates.find(template => template.id === id)
   }
 
-  /**
-   * Get custom templates from localStorage
-   */
-  static getCustomTemplates(): NoteTemplate[] {
-    try {
-      const stored = localStorage.getItem(this.STORAGE_KEY)
-      return stored ? JSON.parse(stored) : []
-    } catch (error) {
-      console.error('Failed to load custom templates:', error)
-      return []
-    }
+  static searchTemplates(query: string): NoteTemplate[] {
+    const lowercaseQuery = query.toLowerCase()
+    return this.templates.filter(template => 
+      template.name.toLowerCase().includes(lowercaseQuery) ||
+      template.description.toLowerCase().includes(lowercaseQuery) ||
+      template.category.toLowerCase().includes(lowercaseQuery)
+    )
   }
 
-  /**
-   * Save custom template
-   */
-  static saveCustomTemplate(template: Omit<NoteTemplate, 'id' | 'isBuiltIn'>): string {
-    const customTemplates = this.getCustomTemplates()
-    const newTemplate: NoteTemplate = {
-      ...template,
-      id: `custom-${Date.now()}`,
-      isBuiltIn: false
-    }
-    
-    customTemplates.push(newTemplate)
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(customTemplates))
-    
-    return newTemplate.id
-  }
-
-  /**
-   * Update custom template
-   */
-  static updateCustomTemplate(id: string, updates: Partial<NoteTemplate>): boolean {
-    const customTemplates = this.getCustomTemplates()
-    const index = customTemplates.findIndex(template => template.id === id)
-    
-    if (index === -1) return false
-    
-    customTemplates[index] = { ...customTemplates[index], ...updates }
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(customTemplates))
-    
-    return true
-  }
-
-  /**
-   * Delete custom template
-   */
-  static deleteCustomTemplate(id: string): boolean {
-    const customTemplates = this.getCustomTemplates()
-    const filtered = customTemplates.filter(template => template.id !== id)
-    
-    if (filtered.length === customTemplates.length) return false
-    
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filtered))
-    return true
-  }
-
-  /**
-   * Process template content with variables
-   */
-  static processTemplate(template: NoteTemplate, variables: Record<string, string> = {}): string {
+  static processTemplate(template: NoteTemplate, variables: Record<string, string>): string {
     let content = template.content
     
-    // Add default variables
-    const defaultVariables = {
+    // Replace variables with provided values
+    Object.entries(variables).forEach(([key, value]) => {
+      const regex = new RegExp(`{{${key}}}`, 'g')
+      content = content.replace(regex, value || `{{${key}}}`)
+    })
+
+    // Replace any remaining variables with empty strings
+    content = content.replace(/{{[^}]+}}/g, '')
+
+    // Set default values for common variables
+    const defaults: Record<string, string> = {
       date: new Date().toLocaleDateString(),
       time: new Date().toLocaleTimeString(),
-      datetime: new Date().toLocaleString(),
-      ...variables
+      datetime: new Date().toLocaleString()
     }
-    
-    // Replace variables in content
-    Object.entries(defaultVariables).forEach(([key, value]) => {
+
+    Object.entries(defaults).forEach(([key, value]) => {
       const regex = new RegExp(`{{${key}}}`, 'g')
       content = content.replace(regex, value)
     })
-    
+
     return content
   }
 
-  /**
-   * Get all categories
-   */
   static getCategories(): string[] {
-    const templates = this.getTemplates()
-    const categories = [...new Set(templates.map(template => template.category))]
-    return categories.sort()
-  }
-
-  /**
-   * Search templates
-   */
-  static searchTemplates(query: string): NoteTemplate[] {
-    const templates = this.getTemplates()
-    const lowercaseQuery = query.toLowerCase()
-    
-    return templates.filter(template => 
-      template.name.toLowerCase().includes(lowercaseQuery) ||
-      template.description.toLowerCase().includes(lowercaseQuery) ||
-      template.tags.some(tag => tag.toLowerCase().includes(lowercaseQuery)) ||
-      template.category.toLowerCase().includes(lowercaseQuery)
-    )
+    const categories = new Set(this.templates.map(template => template.category))
+    return Array.from(categories).sort()
   }
 }

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Page</title>
+</head>
+<body>
+    <h1>Test Page</h1>
+    <p>This is a simple test to see if the server is working.</p>
+    <div id="test">Loading...</div>
+    
+    <script>
+        document.getElementById('test').innerHTML = 'JavaScript is working!';
+        
+        // Test fetch to backend
+        fetch('http://localhost:8000/api/notes/')
+            .then(response => response.json())
+            .then(data => {
+                console.log('Notes:', data);
+                document.getElementById('test').innerHTML = `JavaScript is working! Notes count: ${data.length}`;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('test').innerHTML = 'JavaScript is working, but API failed: ' + error.message;
+            });
+    </script>
+</body>
+</html>

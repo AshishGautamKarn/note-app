@@ -1,105 +1,66 @@
 import React, { useState, useEffect } from 'react'
-import { useMutation, useQueryClient, useQuery } from 'react-query'
-import { X, Save, Trash2, Folder, Mic, Star, Archive, Users } from 'lucide-react'
-import AudioRecorder from './AudioRecorder'
-import TagsInput from './TagsInput'
-import CollaborationPanel from './CollaborationPanel'
+import { useMutation, useQueryClient } from 'react-query'
+import { X, Save, Star, Archive, Tag, Folder } from 'lucide-react'
 import RichTextEditor from './RichTextEditor'
-
-interface NoteEditorProps {
-  noteId: number | null
-  onClose: () => void
-}
+import { RichTextEditorService } from '../services/richTextEditor'
 
 interface Note {
   id: number
   title: string
   content: string
-  folder_id?: number
-  tags?: string[]
-  is_favorite?: boolean
-  is_archived?: boolean
+  folder_id: number | null
+  folder_name: string | null
+  tags: string[]
+  is_favorite: boolean
+  is_archived: boolean
+  created_at: string
+  updated_at: string | null
+  word_count: number
+  char_count: number
 }
 
-const NoteEditor: React.FC<NoteEditorProps> = ({ noteId, onClose }) => {
+interface Folder {
+  id: number
+  name: string
+  description: string | null
+  parent_id: number | null
+  path: string
+  created_at: string
+  updated_at: string | null
+  notes_count: number
+  children_count: number
+}
+
+interface NoteEditorProps {
+  note: Note | null
+  folders: Folder[]
+  onClose: () => void
+  onSave: (note: Note) => void
+}
+
+const NoteEditor: React.FC<NoteEditorProps> = ({ note, folders, onClose, onSave }) => {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
-  const [folderId, setFolderId] = useState<number | null>(null)
+  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null)
+  const [tags, setTags] = useState<string[]>([])
   const [isFavorite, setIsFavorite] = useState(false)
   const [isArchived, setIsArchived] = useState(false)
-  const [tags, setTags] = useState<string[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [showAudioRecorder, setShowAudioRecorder] = useState(false)
-  const [showCollaboration, setShowCollaboration] = useState(false)
+  const [newTag, setNewTag] = useState('')
+  const [useRichText, setUseRichText] = useState(false)
+
   const queryClient = useQueryClient()
 
-  // Fetch folders for dropdown
-  const { data: folders } = useQuery(
-    'folders',
-    async () => {
-      const response = await fetch('http://localhost:8000/api/folders/')
-      if (!response.ok) {
-        throw new Error('Failed to fetch folders')
-      }
-      return response.json()
-    }
-  )
-
-  // Load existing note if editing
-  useEffect(() => {
-    if (noteId && noteId > 0) {
-      setIsLoading(true)
-      fetch(`http://localhost:8000/api/notes/${noteId}`)
-        .then(res => res.json())
-        .then((note: Note) => {
-          setTitle(note.title || '')
-          setContent(note.content || '')
-          setFolderId(note.folder_id || null)
-          setIsFavorite(note.is_favorite || false)
-          setIsArchived(note.is_archived || false)
-          setTags(note.tags || [])
-        })
-        .catch(err => console.error('Failed to load note:', err))
-        .finally(() => setIsLoading(false))
-    } else {
-      // Check for template content
-      const templateContent = localStorage.getItem('note-app-template-content')
-      if (templateContent) {
-        setContent(templateContent)
-        localStorage.removeItem('note-app-template-content')
-      } else {
-        setContent('')
-      }
-      
-      setTitle('')
-      setFolderId(null)
-      setIsFavorite(false)
-      setIsArchived(false)
-      setTags([])
-    }
-  }, [noteId])
-
-  // Save note mutation
-  const saveNoteMutation = useMutation(
-    async (noteData: { title: string; content: string; folder_id?: number | null; is_favorite?: boolean; is_archived?: boolean; tags?: string[] }) => {
-      const url = noteId && noteId > 0 
-        ? `http://localhost:8000/api/notes/${noteId}` 
-        : 'http://localhost:8000/api/notes/'
-      
-      const method = noteId && noteId > 0 ? 'PUT' : 'POST'
-      
-      const response = await fetch(url, {
-        method,
+  // Update note mutation
+  const updateNoteMutation = useMutation(
+    async (updatedNote: Partial<Note>) => {
+      const response = await fetch(`http://localhost:8000/api/notes/${note?.id}`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(noteData),
+        body: JSON.stringify(updatedNote),
       })
-      
-      if (!response.ok) {
-        throw new Error('Failed to save note')
-      }
-      
+      if (!response.ok) throw new Error('Failed to update note')
       return response.json()
     },
     {
@@ -107,257 +68,266 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ noteId, onClose }) => {
         queryClient.invalidateQueries('notes')
         onClose()
       },
-      onError: (error) => {
-        console.error('Failed to save note:', error)
-        alert('Failed to save note. Please try again.')
-      }
     }
   )
 
-  // Delete note mutation
-  const deleteNoteMutation = useMutation(
-    async () => {
-      if (!noteId || noteId <= 0) return
-      
-      const response = await fetch(`http://localhost:8000/api/notes/${noteId}`, {
-        method: 'DELETE',
+  // Create note mutation
+  const createNoteMutation = useMutation(
+    async (newNote: Partial<Note>) => {
+      const response = await fetch('http://localhost:8000/api/notes/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newNote),
       })
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete note')
-      }
+      if (!response.ok) throw new Error('Failed to create note')
+      return response.json()
     },
     {
       onSuccess: () => {
         queryClient.invalidateQueries('notes')
         onClose()
       },
-      onError: (error) => {
-        console.error('Failed to delete note:', error)
-        alert('Failed to delete note. Please try again.')
-      }
     }
   )
 
-  const handleSave = () => {
-    if (!title.trim() && !content.trim()) {
-      alert('Please enter a title or content for the note.')
-      return
+  useEffect(() => {
+    if (note) {
+      setTitle(note.title)
+      setContent(note.content)
+      setSelectedFolderId(note.folder_id)
+      setTags(note.tags)
+      setIsFavorite(note.is_favorite)
+      setIsArchived(note.is_archived)
+    } else {
+      setTitle('')
+      setContent('')
+      setSelectedFolderId(null)
+      setTags([])
+      setIsFavorite(false)
+      setIsArchived(false)
     }
-    
-    saveNoteMutation.mutate({ 
-      title: title.trim(), 
-      content: content.trim(),
-      folder_id: folderId,
+  }, [note])
+
+  const handleSave = async () => {
+    // Calculate word count based on content type
+    const wordCount = useRichText 
+      ? RichTextEditorService.getWordCount(content)
+      : content.split(/\s+/).filter(word => word.length > 0).length
+
+    const noteData = {
+      title,
+      content,
+      folder_id: selectedFolderId,
+      tags,
       is_favorite: isFavorite,
       is_archived: isArchived,
-      tags: tags
-    })
-  }
+      word_count: wordCount,
+      char_count: content.length,
+    }
 
-  const handleDelete = () => {
-    if (noteId && noteId > 0) {
-      if (window.confirm('Are you sure you want to delete this note?')) {
-        deleteNoteMutation.mutate()
-      }
+    if (note) {
+      updateNoteMutation.mutate(noteData)
+    } else {
+      createNoteMutation.mutate(noteData)
     }
   }
 
-  const handleTranscriptionComplete = (text: string) => {
-    setContent(prev => prev + (prev ? '\n\n' : '') + text)
-    setShowAudioRecorder(false)
+  const handleAddTag = () => {
+    if (newTag.trim() && !tags.includes(newTag.trim())) {
+      setTags([...tags, newTag.trim()])
+      setNewTag('')
+    }
   }
 
-  if (isLoading) {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white p-6 rounded-lg shadow-xl">
-          <div className="flex items-center">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-            Loading note...
-          </div>
-        </div>
-      </div>
-    )
+  const handleRemoveTag = (tagToRemove: string) => {
+    setTags(tags.filter(tag => tag !== tagToRemove))
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && e.ctrlKey) {
+      handleSave()
+    }
   }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-xl font-semibold text-gray-900">
-            {noteId && noteId > 0 ? 'Edit Note' : 'New Note'}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+            {note ? 'Edit Note' : 'New Note'}
           </h2>
-          <div className="flex items-center space-x-2">
-            {noteId && noteId > 0 && (
-              <>
-                <button
-                  onClick={() => setShowCollaboration(true)}
-                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  title="Collaborate"
-                >
-                  <Users className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={handleDelete}
-                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  title="Delete note"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </>
-            )}
-            <button
-              onClick={onClose}
-              className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          >
+            <X className="w-6 h-6" />
+          </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 flex flex-col p-4 space-y-4 overflow-hidden">
-          {/* Title Input */}
-          <div>
-            <input
-              type="text"
-              placeholder="Note title..."
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full text-xl font-medium border-none outline-none placeholder-gray-400"
-              autoFocus
-            />
-          </div>
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="space-y-6">
+            {/* Title */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Title
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                placeholder="Enter note title..."
+                onKeyDown={handleKeyPress}
+              />
+            </div>
 
-          {/* Folder Selector and Audio Recording */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <Folder className="h-4 w-4 text-gray-500" />
-                <select
-                  value={folderId || ''}
-                  onChange={(e) => setFolderId(e.target.value ? parseInt(e.target.value) : null)}
-                  className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">No folder</option>
-                  {folders?.map((folder: any) => (
-                    <option key={folder.id} value={folder.id}>
-                      {folder.name}
-                    </option>
-                  ))}
-                </select>
+            {/* Content */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Content
+                </label>
+                <div className="flex items-center space-x-2">
+                  <label className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                    <input
+                      type="checkbox"
+                      checked={useRichText}
+                      onChange={(e) => setUseRichText(e.target.checked)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded mr-2"
+                    />
+                    Rich Text Editor
+                  </label>
+                </div>
               </div>
               
-              {/* Favorites and Archiving */}
-              <div className="flex items-center space-x-2">
+              {useRichText ? (
+                <RichTextEditor
+                  value={content}
+                  onChange={setContent}
+                  placeholder="Enter note content..."
+                  className="h-64"
+                />
+              ) : (
+                <textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 h-64 resize-none"
+                  placeholder="Enter note content..."
+                  onKeyDown={handleKeyPress}
+                />
+              )}
+            </div>
+
+            {/* Folder Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Folder
+              </label>
+              <select
+                value={selectedFolderId || ''}
+                onChange={(e) => setSelectedFolderId(e.target.value ? Number(e.target.value) : null)}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+              >
+                <option value="">No folder</option>
+                {folders.map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Tags */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Tags
+              </label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {tags.map((tag, index) => (
+                  <span
+                    key={index}
+                    className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200"
+                  >
+                    {tag}
+                    <button
+                      onClick={() => handleRemoveTag(tag)}
+                      className="ml-1 text-blue-600 dark:text-blue-300 hover:text-blue-800 dark:hover:text-blue-100"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newTag}
+                  onChange={(e) => setNewTag(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
+                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  placeholder="Add a tag..."
+                />
                 <button
-                  onClick={() => setIsFavorite(!isFavorite)}
-                  className={`p-2 rounded-lg transition-colors ${
-                    isFavorite 
-                      ? 'bg-yellow-100 text-yellow-600' 
-                      : 'text-gray-400 hover:bg-gray-100 hover:text-yellow-600'
-                  }`}
-                  title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                  onClick={handleAddTag}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500"
                 >
-                  <Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} />
-                </button>
-                
-                <button
-                  onClick={() => setIsArchived(!isArchived)}
-                  className={`p-2 rounded-lg transition-colors ${
-                    isArchived 
-                      ? 'bg-orange-100 text-orange-600' 
-                      : 'text-gray-400 hover:bg-gray-100 hover:text-orange-600'
-                  }`}
-                  title={isArchived ? 'Unarchive note' : 'Archive note'}
-                >
-                  <Archive className={`h-4 w-4 ${isArchived ? 'fill-current' : ''}`} />
+                  Add
                 </button>
               </div>
             </div>
-            
-            <button
-              onClick={() => setShowAudioRecorder(true)}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-            >
-              <Mic className="h-4 w-4" />
-              <span>Record Audio</span>
-            </button>
-          </div>
 
-          {/* Tags Input */}
-          <div>
-            <TagsInput
-              tags={tags}
-              onChange={setTags}
-              placeholder="Add tags to organize your note..."
-              maxTags={10}
-            />
-          </div>
-
-          {/* Rich Text Editor */}
-          <div className="flex-1">
-            <RichTextEditor
-              value={content}
-              onChange={setContent}
-              placeholder="Start writing your note..."
-              className="h-full"
-            />
+            {/* Options */}
+            <div className="flex items-center space-x-6">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={isFavorite}
+                  onChange={(e) => setIsFavorite(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded"
+                />
+                <span className="ml-2 text-sm text-gray-700 dark:text-gray-300 flex items-center">
+                  <Star className="w-4 h-4 mr-1" />
+                  Favorite
+                </span>
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={isArchived}
+                  onChange={(e) => setIsArchived(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-gray-600 rounded"
+                />
+                <span className="ml-2 text-sm text-gray-700 dark:text-gray-300 flex items-center">
+                  <Archive className="w-4 h-4 mr-1" />
+                  Archived
+                </span>
+              </label>
+            </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between p-4 border-t bg-gray-50">
-          <div className="text-sm text-gray-500">
-            {content.length} characters
-          </div>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saveNoteMutation.isLoading}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center transition-colors disabled:opacity-50"
-            >
-              {saveNoteMutation.isLoading ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-              ) : (
-                <Save className="h-4 w-4 mr-2" />
-              )}
-              {noteId && noteId > 0 ? 'Update' : 'Save'}
-            </button>
-          </div>
+        <div className="flex items-center justify-end space-x-4 p-6 border-t border-gray-200 dark:border-gray-700">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!title.trim() || updateNoteMutation.isLoading || createNoteMutation.isLoading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+          >
+            <Save className="w-4 h-4 mr-2" />
+            {updateNoteMutation.isLoading || createNoteMutation.isLoading ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
-
-      {/* Audio Recorder Modal */}
-      {showAudioRecorder && (
-        <AudioRecorder
-          onTranscriptionComplete={handleTranscriptionComplete}
-          onClose={() => setShowAudioRecorder(false)}
-        />
-      )}
-
-      {/* Collaboration Panel Modal */}
-      {showCollaboration && noteId && noteId > 0 && (
-        <CollaborationPanel
-          isOpen={showCollaboration}
-          onClose={() => setShowCollaboration(false)}
-          noteId={noteId}
-          noteTitle={title || 'Untitled Note'}
-          currentUser={{
-            id: 'current-user',
-            name: 'Current User',
-            email: 'user@example.com'
-          }}
-        />
-      )}
     </div>
   )
 }

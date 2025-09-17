@@ -1,130 +1,126 @@
 import React, { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
-import { Plus, Search, Edit3, Trash2, Star, Folder, FolderOpen, Settings, Mic, Archive, ArchiveRestore, Tag, Keyboard, Download, FileText, BarChart3, Brain, Filter, User, LogOut } from 'lucide-react'
+import { Plus, Search, Edit3, Trash2, Star, Folder, FolderOpen, Sun, Moon, Keyboard, Archive, Download, FileText, BarChart3 } from 'lucide-react'
+import { useTheme } from '../contexts/ThemeContext'
 import NoteEditor from '../components/NoteEditor'
-import FolderManager from '../components/FolderManager'
-import AudioRecorder from '../components/AudioRecorder'
-import ThemeToggle from '../components/ThemeToggle'
-import KeyboardShortcutsHelp from '../components/KeyboardShortcutsHelp'
 import ExportImport from '../components/ExportImport'
 import NoteTemplates from '../components/NoteTemplates'
 import AnalyticsDashboard from '../components/AnalyticsDashboard'
-import SmartSuggestions from '../components/SmartSuggestions'
-import AdvancedSearch from '../components/AdvancedSearch'
-import OfflineStatus from '../components/OfflineStatus'
-import UserProfile from '../components/UserProfile'
-import ProtectedRoute from '../components/ProtectedRoute'
-import { useAuth } from '../contexts/AuthContext'
-import { useKeyboardShortcuts, createNoteShortcuts } from '../hooks/useKeyboardShortcuts'
-import { NoteTemplatesService, NoteTemplate } from '../services/noteTemplates'
-import { SmartSuggestion } from '../services/smartOrganization'
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
+import { ExportData } from '../services/exportImport'
+import { NoteTemplate } from '../services/noteTemplates'
+import { AnalyticsService, AnalyticsData } from '../services/analytics'
 
-const HomePageContent: React.FC = () => {
+interface Note {
+  id: number
+  title: string
+  content: string
+  folder_id: number | null
+  folder_name: string | null
+  tags: string[]
+  is_favorite: boolean
+  is_archived: boolean
+  created_at: string
+  updated_at: string | null
+  word_count: number
+  char_count: number
+}
+
+interface Folder {
+  id: number
+  name: string
+  description: string | null
+  parent_id: number | null
+  path: string
+  created_at: string
+  updated_at: string | null
+  notes_count: number
+  children_count: number
+}
+
+const HomePage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedNote, setSelectedNote] = useState<number | null>(null)
   const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null)
+  const [showNoteEditor, setShowNoteEditor] = useState(false)
+  const [editingNote, setEditingNote] = useState<Note | null>(null)
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [showFavorites, setShowFavorites] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
-  const [selectedTag, setSelectedTag] = useState<string | null>(null)
-  const [showFolderManager, setShowFolderManager] = useState(false)
-  const [showAudioRecorder, setShowAudioRecorder] = useState(false)
-  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [showExportImport, setShowExportImport] = useState(false)
-  const [showNoteTemplates, setShowNoteTemplates] = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
   const [showAnalytics, setShowAnalytics] = useState(false)
-  const [showSmartSuggestions, setShowSmartSuggestions] = useState(false)
-  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false)
-  const [showUserProfile, setShowUserProfile] = useState(false)
-  const searchInputRef = useRef<HTMLInputElement>(null)
+  const { theme, toggleTheme } = useTheme()
   const queryClient = useQueryClient()
-  const { user, logout } = useAuth()
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch notes
-  const { data: notes, isLoading, error } = useQuery(
+  const { data: notes = [], isLoading: notesLoading } = useQuery<Note[]>(
     'notes',
     async () => {
       const response = await fetch('http://localhost:8000/api/notes/')
-      if (!response.ok) {
-        throw new Error('Failed to fetch notes')
-      }
+      if (!response.ok) throw new Error('Failed to fetch notes')
       return response.json()
     }
   )
 
   // Fetch folders
-  const { data: folders } = useQuery(
+  const { data: folders = [], isLoading: foldersLoading } = useQuery<Folder[]>(
     'folders',
     async () => {
       const response = await fetch('http://localhost:8000/api/folders/')
-      if (!response.ok) {
-        throw new Error('Failed to fetch folders')
-      }
+      if (!response.ok) throw new Error('Failed to fetch folders')
       return response.json()
     }
   )
 
   // Delete note mutation
   const deleteNoteMutation = useMutation(
-    async (id: number) => {
-      const response = await fetch(`http://localhost:8000/api/notes/${id}`, {
+    async (noteId: number) => {
+      const response = await fetch(`http://localhost:8000/api/notes/${noteId}`, {
         method: 'DELETE',
       })
-      if (!response.ok) {
-        throw new Error('Failed to delete note')
-      }
+      if (!response.ok) throw new Error('Failed to delete note')
     },
     {
       onSuccess: () => {
         queryClient.invalidateQueries('notes')
       },
-      onError: (error) => {
-        console.error('Failed to delete note:', error)
-        alert('Failed to delete note. Please try again.')
-      }
     }
   )
 
-  const handleDeleteNote = (id: number) => {
+  // Handler functions
+  const handleNewNote = () => {
+    setEditingNote(null)
+    setShowNoteEditor(true)
+  }
+
+  const handleEditNote = (note: Note) => {
+    setEditingNote(note)
+    setShowNoteEditor(true)
+  }
+
+  const handleDeleteNote = (noteId: number) => {
     if (window.confirm('Are you sure you want to delete this note?')) {
-      deleteNoteMutation.mutate(id)
+      deleteNoteMutation.mutate(noteId)
     }
   }
 
-  const filteredNotes = notes?.filter((note: any) => {
-    const matchesSearch = note.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         note.content?.toLowerCase().includes(searchQuery.toLowerCase())
-    
-    const matchesFolder = selectedFolderId === null || 
-                         note.folder_id === selectedFolderId
-    
-    const matchesFavorites = !showFavorites || note.is_favorite === true
-    
-    const matchesArchived = showArchived ? note.is_archived === true : note.is_archived !== true
-    
-    const matchesTag = selectedTag === null || 
-                      (note.tags && note.tags.includes(selectedTag))
-    
-    return matchesSearch && matchesFolder && matchesFavorites && matchesArchived && matchesTag
-  }) || []
-
-  // Get all unique tags from notes
-  const allTags = Array.from(new Set(
-    notes?.flatMap((note: any) => note.tags || []) || []
-  )).sort()
-
-  const selectedFolder = folders?.find((folder: any) => folder.id === selectedFolderId)
-
-  const handleTranscriptionComplete = (text: string) => {
-    // Create a new note with the transcribed text
-    setSelectedNote(0) // Open new note editor
-    setShowAudioRecorder(false)
-    // The NoteEditor will handle setting the content
+  const handleCloseEditor = () => {
+    setShowNoteEditor(false)
+    setEditingNote(null)
   }
 
-  const handleImport = async (importedNotes: Note[], importedFolders: Folder[]) => {
+  const handleSaveNote = (note: Note) => {
+    // Note is saved via the mutation in NoteEditor
+    setShowNoteEditor(false)
+    setEditingNote(null)
+  }
+
+  const handleImport = async (data: ExportData) => {
     try {
       // Import folders first
-      for (const folder of importedFolders) {
+      for (const folder of data.folders) {
         await fetch('http://localhost:8000/api/folders/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -133,17 +129,16 @@ const HomePageContent: React.FC = () => {
       }
 
       // Import notes
-      for (const note of importedNotes) {
+      for (const note of data.notes) {
         await fetch('http://localhost:8000/api/notes/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             title: note.title,
             content: note.content,
-            folder_id: note.folder_id,
-            tags: note.tags,
-            is_favorite: note.is_favorite,
-            is_archived: note.is_archived
+            is_favorite: note.is_favorite || false,
+            is_archived: note.is_archived || false,
+            folder_id: null // Will be handled by folder name matching
           })
         })
       }
@@ -151,536 +146,360 @@ const HomePageContent: React.FC = () => {
       // Refresh data
       queryClient.invalidateQueries('notes')
       queryClient.invalidateQueries('folders')
-      
-      alert(`Successfully imported ${importedNotes.length} notes and ${importedFolders.length} folders!`)
     } catch (error) {
       console.error('Import failed:', error)
-      alert('Import failed. Please try again.')
     }
   }
 
-  const handleSelectTemplate = (template: NoteTemplate) => {
-    // Process template content with variables
-    const processedContent = NoteTemplatesService.processTemplate(template)
-    
-    // Create a new note with the template content
-    setSelectedNote(0) // Open new note editor
-    setShowNoteTemplates(false)
-    
-    // Store the template content for the NoteEditor to use
-    // This will be handled by the NoteEditor component
-    localStorage.setItem('note-app-template-content', processedContent)
+  const handleTemplateSelect = (template: NoteTemplate) => {
+    // Create a new note with template content
+    setEditingNote({
+      id: 0,
+      title: `New ${template.name}`,
+      content: template.content,
+      is_favorite: false,
+      is_archived: false,
+      folder_id: null,
+      folder_name: null,
+      word_count: 0,
+      created_at: new Date().toISOString(),
+      updated_at: null
+    })
+    setShowNoteEditor(true)
   }
 
+  // Calculate analytics data
+  const analyticsData: AnalyticsData = AnalyticsService.calculateAnalytics(notes, folders)
+
+  // Filter notes based on search and folder
+  const filteredNotes = notes.filter(note => {
+    const matchesSearch = note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         note.content.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesFolder = selectedFolderId === null || note.folder_id === selectedFolderId
+    const matchesFavorites = !showFavorites || note.is_favorite
+    const matchesArchived = !showArchived || note.is_archived
+    return matchesSearch && matchesFolder && matchesFavorites && matchesArchived
+  })
+
   // Keyboard shortcuts
-  const shortcuts = [
-    ...createNoteShortcuts({
-      newNote: () => setSelectedNote(0),
-      search: () => searchInputRef.current?.focus(),
-      toggleTheme: () => {
-        // This will be handled by the ThemeToggle component
-        const event = new KeyboardEvent('keydown', { key: 'd', ctrlKey: true })
-        document.dispatchEvent(event)
-      },
-      toggleFavorites: () => setShowFavorites(!showFavorites),
-      toggleArchived: () => setShowArchived(!showArchived)
-    }),
+  useKeyboardShortcuts([
+    {
+      key: 'n',
+      ctrlKey: true,
+      action: handleNewNote,
+      description: 'Create new note'
+    },
+    {
+      key: 'k',
+      ctrlKey: true,
+      action: () => searchInputRef.current?.focus(),
+      description: 'Focus search'
+    },
+    {
+      key: 'd',
+      ctrlKey: true,
+      action: toggleTheme,
+      description: 'Toggle dark mode'
+    },
     {
       key: '?',
       ctrlKey: true,
       action: () => setShowKeyboardHelp(true),
       description: 'Show keyboard shortcuts'
     }
-  ]
+  ])
 
-  useKeyboardShortcuts({ shortcuts })
-
-  // Handle Escape key to close modals
-  React.useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (showKeyboardHelp) {
-          setShowKeyboardHelp(false)
-        } else if (showFolderManager) {
-          setShowFolderManager(false)
-        } else if (showAudioRecorder) {
-          setShowAudioRecorder(false)
-        } else if (selectedNote !== null) {
-          setSelectedNote(null)
-        }
-      }
-    }
-
-    document.addEventListener('keydown', handleEscape)
-    return () => document.removeEventListener('keydown', handleEscape)
-  }, [showKeyboardHelp, showFolderManager, showAudioRecorder, selectedNote])
+  if (notesLoading || foldersLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-300">Loading notes...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="space-y-6">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100 mb-2">📝 Note App</h1>
-              <p className="text-lg text-gray-600 dark:text-gray-400">Modern Note Taking Application</p>
-              {selectedFolder && (
-                <div className="flex items-center mt-2 text-sm text-blue-600 dark:text-blue-400">
-                  <FolderOpen className="h-4 w-4 mr-1" />
-                  <span>Viewing: {selectedFolder.name}</span>
-                </div>
-              )}
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Header */}
+      <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Note App</h1>
             </div>
-            
-                <div className="mt-4 sm:mt-0 flex items-center space-x-2">
-                  <OfflineStatus />
-                  <ThemeToggle />
-                  <button
-                    onClick={() => setShowUserProfile(true)}
-                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
-                    title="User profile"
-                  >
-                    <User className="h-4 w-4" />
-                  </button>
-                  <button
-                onClick={() => setShowKeyboardHelp(true)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
-                title="Keyboard shortcuts (Ctrl + ?)"
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                title="Toggle theme (Ctrl+D)"
               >
-                <Keyboard className="h-4 w-4" />
+                {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+              <button
+                onClick={() => setShowKeyboardHelp(true)}
+                className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                title="Keyboard shortcuts (Ctrl+?)"
+              >
+                <Keyboard className="w-5 h-5" />
               </button>
               <button
                 onClick={() => setShowExportImport(true)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
+                className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                 title="Export/Import data"
               >
-                <Download className="h-4 w-4" />
+                <Download className="w-5 h-5" />
               </button>
               <button
-                onClick={() => setShowNoteTemplates(true)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
+                onClick={() => setShowTemplates(true)}
+                className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                 title="Note templates"
               >
-                <FileText className="h-4 w-4" />
+                <FileText className="w-5 h-5" />
               </button>
               <button
                 onClick={() => setShowAnalytics(true)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
+                className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                 title="Analytics dashboard"
               >
-                <BarChart3 className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setShowSmartSuggestions(true)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
-                title="Smart suggestions"
-              >
-                <Brain className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setShowAdvancedSearch(true)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
-                title="Advanced search"
-              >
-                <Filter className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setShowAudioRecorder(true)}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
-              >
-                <Mic className="h-4 w-4 mr-2" />
-                Record Audio
-              </button>
-              <button
-                onClick={() => setShowFolderManager(true)}
-                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
-              >
-                <Settings className="h-4 w-4 mr-2" />
-                Manage Folders
+                <BarChart3 className="w-5 h-5" />
               </button>
               <button 
-                onClick={() => setSelectedNote(0)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
+                onClick={handleNewNote}
+                className="btn btn-primary"
+                title="New note (Ctrl+N)"
               >
-                <Plus className="h-4 w-4 mr-2" />
+                <Plus className="w-4 h-4 mr-2" />
                 New Note
               </button>
             </div>
           </div>
+        </div>
+      </header>
 
-        {/* Search and Folder Filter */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search notes... (Ctrl + K)"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-500 dark:placeholder-gray-400"
-            />
-          </div>
-          
-          {/* Filter Buttons */}
-          <div className="flex items-center space-x-2 flex-wrap">
-            {/* Folder Filter */}
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setSelectedFolderId(null)}
-                className={`px-4 py-2 rounded-lg flex items-center transition-colors ${
-                  selectedFolderId === null
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-              >
-                <Folder className="h-4 w-4 mr-2" />
-                All Notes
-              </button>
-              
-              {folders?.slice(0, 2).map((folder: any) => (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          {/* Sidebar */}
+          <div className="lg:col-span-1">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
+              <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Folders</h2>
+              <div className="space-y-2">
                 <button
-                  key={folder.id}
-                  onClick={() => setSelectedFolderId(folder.id)}
-                  className={`px-4 py-2 rounded-lg flex items-center transition-colors ${
-                    selectedFolderId === folder.id
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  onClick={() => setSelectedFolderId(null)}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium ${
+                    selectedFolderId === null
+                      ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
                 >
-                  <FolderOpen className="h-4 w-4 mr-2" />
-                  {folder.name}
+                  All Notes ({notes.length})
                 </button>
-              ))}
-              
-              {folders && folders.length > 2 && (
-                <button
-                  onClick={() => setShowFolderManager(true)}
-                  className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                >
-                  +{folders.length - 2} more
-                </button>
-              )}
-            </div>
-            
-            {/* Favorites and Archiving Filter */}
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setShowFavorites(!showFavorites)}
-                className={`px-4 py-2 rounded-lg flex items-center transition-colors ${
-                  showFavorites
-                    ? 'bg-yellow-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-              >
-                <Star className={`h-4 w-4 mr-2 ${showFavorites ? 'fill-current' : ''}`} />
-                Favorites
-              </button>
-              
-              <button
-                onClick={() => setShowArchived(!showArchived)}
-                className={`px-4 py-2 rounded-lg flex items-center transition-colors ${
-                  showArchived
-                    ? 'bg-orange-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-              >
-                {showArchived ? (
-                  <ArchiveRestore className="h-4 w-4 mr-2" />
-                ) : (
-                  <Archive className="h-4 w-4 mr-2" />
-                )}
-                {showArchived ? 'Show Active' : 'Archived'}
-              </button>
-            </div>
-            
-            {/* Tags Filter */}
-            {allTags.length > 0 && (
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setSelectedTag(null)}
-                  className={`px-4 py-2 rounded-lg flex items-center transition-colors ${
-                    selectedTag === null
-                      ? 'bg-green-600 text-white'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  <Tag className="h-4 w-4 mr-2" />
-                  All Tags
-                </button>
-                
-                {allTags.slice(0, 3).map((tag) => (
+                {folders.map((folder) => (
                   <button
-                    key={tag}
-                    onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
-                    className={`px-4 py-2 rounded-lg flex items-center transition-colors ${
-                      selectedTag === tag
-                        ? 'bg-green-600 text-white'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    key={folder.id}
+                    onClick={() => setSelectedFolderId(folder.id)}
+                    className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium ${
+                      selectedFolderId === folder.id
+                        ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }`}
                   >
-                    <Tag className="h-4 w-4 mr-2" />
-                    {tag}
+                    <Folder className="w-4 h-4 inline mr-2" />
+                    {folder.name} ({folder.notes_count})
                   </button>
                 ))}
-                
-                {allTags.length > 3 && (
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    +{allTags.length - 3} more
-                  </span>
-                )}
               </div>
-            )}
+            </div>
           </div>
-        </div>
 
-        {/* API Status */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
-          <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">Backend Connection Status</h2>
-          
-          {isLoading && (
-            <div className="flex items-center text-blue-600 dark:text-blue-400">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-              Connecting to backend...
+          {/* Main Content */}
+          <div className="lg:col-span-3">
+            {/* Search and Filters */}
+            <div className="mb-6 space-y-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 w-5 h-5" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  placeholder="Search notes... (Ctrl+K)"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400"
+                />
+              </div>
+              
+              {/* Filter Buttons */}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setShowFavorites(!showFavorites)}
+                  className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                    showFavorites
+                      ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <Star className="w-4 h-4 inline mr-1" />
+                  Favorites
+                </button>
+                <button
+                  onClick={() => setShowArchived(!showArchived)}
+                  className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                    showArchived
+                      ? 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <Archive className="w-4 h-4 inline mr-1" />
+                  Archived
+                </button>
+              </div>
             </div>
-          )}
-          
-          {error && (
-            <div className="text-red-600 dark:text-red-400">
-              ❌ Backend connection failed: {error.message}
-            </div>
-          )}
-          
-          {notes && (
-            <div className="text-green-600 dark:text-green-400">
-              ✅ Backend connected successfully! Found {notes.length} notes.
-            </div>
-          )}
 
-          <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-            <h3 className="font-medium text-gray-800 dark:text-gray-200 mb-2">Features Ready:</h3>
-            <ul className="list-disc list-inside text-gray-600 dark:text-gray-300 space-y-1">
-              <li>✅ React Router navigation</li>
-              <li>✅ React Query state management</li>
-              <li>✅ Tailwind CSS styling</li>
-              <li>✅ Backend API connection</li>
-              <li>✅ Note creation and editing</li>
-              <li>✅ Folder management</li>
-              <li>✅ Audio transcription</li>
-              <li>✅ Favorites and archiving</li>
-              <li>✅ Tags system</li>
-              <li>✅ Dark mode theme</li>
-            </ul>
-          </div>
-        </div>
-
-        {/* Notes Display */}
-        {isLoading ? (
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
-              <span className="text-gray-600 dark:text-gray-400">Loading notes...</span>
-            </div>
-          </div>
-        ) : filteredNotes.length === 0 ? (
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg text-center">
-            <Edit3 className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-              {searchQuery ? 'No notes found' : 'No notes yet'}
-            </h3>
-            <p className="text-gray-500 dark:text-gray-400 mb-4">
-              {searchQuery ? 'Try a different search term' : 'Get started by creating your first note'}
-            </p>
-            <button
-              onClick={() => setSelectedNote(0)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center mx-auto transition-colors"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Create Note
-            </button>
-          </div>
-        ) : (
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
-            <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-4">
-              Your Notes ({filteredNotes.length})
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredNotes.map((note: any) => (
-                <div 
-                  key={note.id} 
-                  className="p-4 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg hover:shadow-md transition-shadow cursor-pointer group"
+            {/* Notes Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredNotes.map((note) => (
+                <div
+                  key={note.id}
+                  className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6 hover:shadow-md transition-shadow cursor-pointer"
                   onClick={() => setSelectedNote(note.id)}
                 >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center space-x-2 flex-1 min-w-0">
-                      <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                        {note.title || 'Untitled Note'}
-                      </h3>
-                      <div className="flex items-center space-x-1">
-                        {note.is_favorite && (
-                          <Star className="h-4 w-4 text-yellow-500 fill-current" title="Favorite" />
-                        )}
-                        {note.is_archived && (
-                          <Archive className="h-4 w-4 text-orange-500" title="Archived" />
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 truncate">
+                      {note.title}
+                    </h3>
+                    <div className="flex items-center space-x-2">
+                      {note.is_favorite && (
+                        <Star className="w-4 h-4 text-yellow-500 fill-current" />
+                      )}
+                      <button 
                         onClick={(e) => {
                           e.stopPropagation()
-                          setSelectedNote(note.id)
+                          handleEditNote(note)
                         }}
-                        className="p-1 hover:bg-gray-100 rounded text-blue-600"
-                        title="Edit note"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
                       >
-                        <Edit3 className="h-4 w-4" />
+                        <Edit3 className="w-4 h-4" />
                       </button>
-                      <button
+                      <button 
                         onClick={(e) => {
                           e.stopPropagation()
                           handleDeleteNote(note.id)
                         }}
-                        className="p-1 hover:bg-gray-100 rounded text-red-600"
-                        title="Delete note"
+                        className="text-gray-400 dark:text-gray-500 hover:text-red-600"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-3">
-                    {note.content || 'No content'}
+                  
+                  <p className="text-gray-600 dark:text-gray-300 text-sm mb-3 line-clamp-3">
+                    {note.content}
                   </p>
                   
-                  {/* Tags */}
-                  {note.tags && note.tags.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {note.tags.slice(0, 3).map((tag: string, index: number) => (
-                        <span
-                          key={index}
-                          className="inline-flex items-center px-2 py-1 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 text-xs rounded-md"
-                        >
-                          <Tag className="h-3 w-3 mr-1" />
-                          {tag}
-                        </span>
-                      ))}
-                      {note.tags.length > 3 && (
-                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                          +{note.tags.length - 3} more
-                        </span>
-                      )}
+                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>{note.word_count} words</span>
+                    <span>{new Date(note.created_at).toLocaleDateString()}</span>
+                  </div>
+                  
+                  {note.folder_name && (
+                    <div className="mt-2 flex items-center text-xs text-blue-600 dark:text-blue-400">
+                      <Folder className="w-3 h-3 mr-1" />
+                      {note.folder_name}
                     </div>
                   )}
-                  
-                  <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    {new Date(note.created_at).toLocaleDateString()}
-                  </div>
                 </div>
               ))}
             </div>
+
+            {filteredNotes.length === 0 && (
+              <div className="text-center py-12">
+                <div className="text-gray-400 dark:text-gray-500 mb-4">
+                  <Edit3 className="w-12 h-12 mx-auto" />
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">No notes found</h3>
+                <p className="text-gray-500 dark:text-gray-400">
+                  {searchQuery ? 'Try adjusting your search terms' : 'Create your first note to get started'}
+                </p>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+      </div>
 
         {/* Note Editor Modal */}
-        {selectedNote !== null && (
+        {showNoteEditor && (
           <NoteEditor
-            noteId={selectedNote}
-            onClose={() => setSelectedNote(null)}
-          />
-        )}
-
-        {/* Folder Manager Modal */}
-        {showFolderManager && (
-          <FolderManager
-            selectedFolderId={selectedFolderId}
-            onFolderSelect={setSelectedFolderId}
-            onClose={() => setShowFolderManager(false)}
-          />
-        )}
-
-        {/* Audio Recorder Modal */}
-        {showAudioRecorder && (
-          <AudioRecorder
-            onTranscriptionComplete={handleTranscriptionComplete}
-            onClose={() => setShowAudioRecorder(false)}
+            note={editingNote}
+            folders={folders}
+            onClose={handleCloseEditor}
+            onSave={handleSaveNote}
           />
         )}
 
         {/* Keyboard Shortcuts Help Modal */}
-        <KeyboardShortcutsHelp
-          isOpen={showKeyboardHelp}
-          onClose={() => setShowKeyboardHelp(false)}
-          shortcuts={shortcuts}
-        />
+        {showKeyboardHelp && (
+          <div className="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center p-4 z-50">
+            <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl w-full max-w-md">
+              <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Keyboard Shortcuts</h2>
+                <button
+                  onClick={() => setShowKeyboardHelp(false)}
+                  className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <span className="text-xl">&times;</span>
+                </button>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700 dark:text-gray-300">Create new note</span>
+                  <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded text-sm">Ctrl+N</kbd>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700 dark:text-gray-300">Focus search</span>
+                  <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded text-sm">Ctrl+K</kbd>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700 dark:text-gray-300">Toggle dark mode</span>
+                  <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded text-sm">Ctrl+D</kbd>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700 dark:text-gray-300">Show shortcuts</span>
+                  <kbd className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded text-sm">Ctrl+?</kbd>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Export/Import Modal */}
-        <ExportImport
-          isOpen={showExportImport}
-          onClose={() => setShowExportImport(false)}
-          notes={notes || []}
-          folders={folders || []}
-          onImport={handleImport}
-        />
+        {showExportImport && (
+          <ExportImport
+            notes={notes}
+            folders={folders}
+            onImport={handleImport}
+            onClose={() => setShowExportImport(false)}
+          />
+        )}
 
         {/* Note Templates Modal */}
-        <NoteTemplates
-          isOpen={showNoteTemplates}
-          onClose={() => setShowNoteTemplates(false)}
-          onSelectTemplate={handleSelectTemplate}
-        />
+        {showTemplates && (
+          <NoteTemplates
+            onSelectTemplate={handleTemplateSelect}
+            onClose={() => setShowTemplates(false)}
+          />
+        )}
 
         {/* Analytics Dashboard Modal */}
-        <AnalyticsDashboard
-          isOpen={showAnalytics}
-          onClose={() => setShowAnalytics(false)}
-          notes={notes || []}
-          folders={folders || []}
-          onNoteSelect={(noteId) => {
-            setSelectedNote(noteId)
-            setShowAnalytics(false)
-          }}
-        />
+        {showAnalytics && (
+          <AnalyticsDashboard
+            data={analyticsData}
+            onClose={() => setShowAnalytics(false)}
+          />
+        )}
 
-        {/* Smart Suggestions Modal */}
-        <SmartSuggestions
-          isOpen={showSmartSuggestions}
-          onClose={() => setShowSmartSuggestions(false)}
-          notes={notes || []}
-          folders={folders || []}
-          onApplySuggestion={(suggestion) => {
-            // Handle suggestion application
-            console.log('Applying suggestion:', suggestion)
-            setShowSmartSuggestions(false)
-          }}
-        />
-
-        {/* Advanced Search Modal */}
-        <AdvancedSearch
-          isOpen={showAdvancedSearch}
-          onClose={() => setShowAdvancedSearch(false)}
-          notes={notes || []}
-          folders={folders || []}
-          onNoteSelect={(noteId) => {
-            setSelectedNote(noteId)
-            setShowAdvancedSearch(false)
-          }}
-        />
-
-        {/* User Profile Modal */}
-        <UserProfile
-          isOpen={showUserProfile}
-          onClose={() => setShowUserProfile(false)}
-        />
       </div>
-    </div>
-  )
-}
+    )
+  }
 
-const HomePage: React.FC = () => {
-  return (
-    <ProtectedRoute>
-      <HomePageContent />
-    </ProtectedRoute>
-  )
-}
-
-export default HomePage
+  export default HomePage

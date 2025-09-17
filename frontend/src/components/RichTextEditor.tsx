@@ -8,20 +8,10 @@ import {
   Link, 
   List, 
   ListOrdered, 
-  CheckSquare, 
-  Quote, 
   Heading1, 
   Heading2, 
-  Heading3, 
-  Type, 
-  Palette, 
-  AlignLeft, 
-  AlignCenter, 
-  AlignRight, 
-  AlignJustify,
-  Minus,
-  Table,
-  MoreHorizontal
+  Heading3,
+  Type
 } from 'lucide-react'
 import { RichTextEditorService, RichTextFormat } from '../services/richTextEditor'
 
@@ -32,371 +22,198 @@ interface RichTextEditorProps {
   className?: string
 }
 
-const RichTextEditor: React.FC<RichTextEditorProps> = ({
-  value,
-  onChange,
-  placeholder = 'Start typing...',
-  className = ''
+const RichTextEditor: React.FC<RichTextEditorProps> = ({ 
+  value, 
+  onChange, 
+  placeholder = "Start writing...",
+  className = ""
 }) => {
-  const [isFocused, setIsFocused] = useState(false)
-  const [showColorPicker, setShowColorPicker] = useState(false)
-  const [showFontPicker, setShowFontPicker] = useState(false)
-  const [currentFormat, setCurrentFormat] = useState<RichTextFormat>({
-    bold: false,
-    italic: false,
-    underline: false,
-    strikethrough: false,
-    code: false,
-    link: null,
-    color: null,
-    backgroundColor: null,
-    fontSize: null,
-    fontFamily: null,
-    alignment: 'left',
-    listType: 'none',
-    indent: 0,
-    quote: false
-  })
-  
+  const [isRichMode, setIsRichMode] = useState(false)
+  const [selectedText, setSelectedText] = useState('')
+  const [linkUrl, setLinkUrl] = useState('')
+  const [showLinkDialog, setShowLinkDialog] = useState(false)
   const editorRef = useRef<HTMLDivElement>(null)
-  const colorPickerRef = useRef<HTMLDivElement>(null)
-  const fontPickerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (editorRef.current) {
-      editorRef.current.innerHTML = value
+      editorRef.current.innerHTML = value || ''
     }
   }, [value])
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (colorPickerRef.current && !colorPickerRef.current.contains(event.target as Node)) {
-        setShowColorPicker(false)
-      }
-      if (fontPickerRef.current && !fontPickerRef.current.contains(event.target as Node)) {
-        setShowFontPicker(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
   const handleInput = () => {
     if (editorRef.current) {
-      const html = editorRef.current.innerHTML
-      onChange(html)
+      const content = editorRef.current.innerHTML
+      onChange(content)
     }
   }
 
-  const handleSelectionChange = () => {
-    const format = RichTextEditorService.getCurrentFormat()
-    setCurrentFormat(format)
-  }
-
-  const applyFormat = (format: Partial<RichTextFormat>) => {
-    RichTextEditorService.applyFormat(format)
-    setCurrentFormat(prev => ({ ...prev, ...format }))
-    handleInput()
-  }
-
-  const applyLink = () => {
-    const url = prompt('Enter URL:')
-    if (url) {
-      RichTextEditorService.applyLink(url)
-      handleInput()
+  const handleSelection = () => {
+    const selection = window.getSelection()
+    if (selection && selection.toString().length > 0) {
+      setSelectedText(selection.toString())
+    } else {
+      setSelectedText('')
     }
   }
 
-  const applyList = (listType: 'bullet' | 'number' | 'check') => {
-    RichTextEditorService.applyList(listType)
-    setCurrentFormat(prev => ({ ...prev, listType }))
+  const execCommand = (command: string, value?: string) => {
+    document.execCommand(command, false, value)
+    editorRef.current?.focus()
     handleInput()
   }
 
-  const applyQuote = () => {
-    RichTextEditorService.applyQuote()
-    setCurrentFormat(prev => ({ ...prev, quote: !prev.quote }))
-    handleInput()
+  const toggleFormat = (format: keyof RichTextFormat) => {
+    switch (format) {
+      case 'bold':
+        execCommand('bold')
+        break
+      case 'italic':
+        execCommand('italic')
+        break
+      case 'underline':
+        execCommand('underline')
+        break
+      case 'strikethrough':
+        execCommand('strikeThrough')
+        break
+      case 'code':
+        execCommand('formatBlock', 'code')
+        break
+      case 'heading':
+        execCommand('formatBlock', 'h2')
+        break
+      case 'listType':
+        execCommand('insertUnorderedList')
+        break
+    }
   }
 
-  const applyCodeBlock = () => {
-    RichTextEditorService.applyCodeBlock()
-    handleInput()
+  const insertLink = () => {
+    if (selectedText && linkUrl) {
+      const linkHtml = `<a href="${linkUrl}" target="_blank" rel="noopener noreferrer">${selectedText}</a>`
+      execCommand('insertHTML', linkHtml)
+      setShowLinkDialog(false)
+      setLinkUrl('')
+      setSelectedText('')
+    }
   }
 
-  const applyHeading = (level: 1 | 2 | 3) => {
-    RichTextEditorService.applyHeading(level)
-    handleInput()
+  const insertHeading = (level: number) => {
+    execCommand('formatBlock', `h${level}`)
   }
 
-  const insertHorizontalRule = () => {
-    RichTextEditorService.insertHorizontalRule()
-    handleInput()
-  }
-
-  const insertTable = () => {
-    const rows = prompt('Number of rows:', '3')
-    const cols = prompt('Number of columns:', '3')
-    if (rows && cols) {
-      RichTextEditorService.insertTable(parseInt(rows), parseInt(cols))
-      handleInput()
+  const insertList = (ordered: boolean = false) => {
+    if (ordered) {
+      execCommand('insertOrderedList')
+    } else {
+      execCommand('insertUnorderedList')
     }
   }
 
   const clearFormatting = () => {
-    RichTextEditorService.clearFormatting()
-    setCurrentFormat({
-      bold: false,
-      italic: false,
-      underline: false,
-      strikethrough: false,
-      code: false,
-      link: null,
-      color: null,
-      backgroundColor: null,
-      fontSize: null,
-      fontFamily: null,
-      alignment: 'left',
-      listType: 'none',
-      indent: 0,
-      quote: false
-    })
-    handleInput()
-  }
-
-  const ToolbarButton: React.FC<{
-    onClick: () => void
-    isActive?: boolean
-    icon: React.ReactNode
-    title: string
-  }> = ({ onClick, isActive = false, icon, title }) => (
-    <button
-      onClick={onClick}
-      className={`p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-        isActive ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400'
-      }`}
-      title={title}
-    >
-      {icon}
-    </button>
-  )
-
-  const ColorPicker: React.FC<{ onColorSelect: (color: string) => void }> = ({ onColorSelect }) => {
-    const colors = RichTextEditorService.getAvailableColors()
-    
-    return (
-      <div className="absolute top-full left-0 mt-1 p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10">
-        <div className="grid grid-cols-6 gap-1">
-          {colors.map((color) => (
-            <button
-              key={color}
-              onClick={() => onColorSelect(color)}
-              className="w-6 h-6 rounded border border-gray-300 dark:border-gray-600"
-              style={{ backgroundColor: color }}
-              title={color}
-            />
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  const FontPicker: React.FC<{ onFontSelect: (font: string) => void }> = ({ onFontSelect }) => {
-    const fonts = RichTextEditorService.getAvailableFonts()
-    
-    return (
-      <div className="absolute top-full left-0 mt-1 p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
-        <div className="space-y-1">
-          {fonts.map((font) => (
-            <button
-              key={font}
-              onClick={() => onFontSelect(font)}
-              className="w-full text-left px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
-              style={{ fontFamily: font }}
-            >
-              {font}
-            </button>
-          ))}
-        </div>
-      </div>
-    )
+    execCommand('removeFormat')
   }
 
   return (
-    <div className={`border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden ${className}`}>
+    <div className={`border border-gray-300 dark:border-gray-600 rounded-lg ${className}`}>
       {/* Toolbar */}
-      <div className="border-b border-gray-200 dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-800">
-        <div className="flex flex-wrap items-center gap-1">
-          {/* Text Formatting */}
-          <div className="flex items-center border-r border-gray-200 dark:border-gray-700 pr-2 mr-2">
-            <ToolbarButton
-              onClick={() => applyFormat({ bold: !currentFormat.bold })}
-              isActive={currentFormat.bold}
-              icon={<Bold className="h-4 w-4" />}
-              title="Bold"
-            />
-            <ToolbarButton
-              onClick={() => applyFormat({ italic: !currentFormat.italic })}
-              isActive={currentFormat.italic}
-              icon={<Italic className="h-4 w-4" />}
-              title="Italic"
-            />
-            <ToolbarButton
-              onClick={() => applyFormat({ underline: !currentFormat.underline })}
-              isActive={currentFormat.underline}
-              icon={<Underline className="h-4 w-4" />}
-              title="Underline"
-            />
-            <ToolbarButton
-              onClick={() => applyFormat({ strikethrough: !currentFormat.strikethrough })}
-              isActive={currentFormat.strikethrough}
-              icon={<Strikethrough className="h-4 w-4" />}
-              title="Strikethrough"
-            />
-            <ToolbarButton
-              onClick={() => applyFormat({ code: !currentFormat.code })}
-              isActive={currentFormat.code}
-              icon={<Code className="h-4 w-4" />}
-              title="Code"
-            />
-          </div>
-
-          {/* Headings */}
-          <div className="flex items-center border-r border-gray-200 dark:border-gray-700 pr-2 mr-2">
-            <ToolbarButton
-              onClick={() => applyHeading(1)}
-              icon={<Heading1 className="h-4 w-4" />}
-              title="Heading 1"
-            />
-            <ToolbarButton
-              onClick={() => applyHeading(2)}
-              icon={<Heading2 className="h-4 w-4" />}
-              title="Heading 2"
-            />
-            <ToolbarButton
-              onClick={() => applyHeading(3)}
-              icon={<Heading3 className="h-4 w-4" />}
-              title="Heading 3"
-            />
-          </div>
-
-          {/* Lists */}
-          <div className="flex items-center border-r border-gray-200 dark:border-gray-700 pr-2 mr-2">
-            <ToolbarButton
-              onClick={() => applyList('bullet')}
-              isActive={currentFormat.listType === 'bullet'}
-              icon={<List className="h-4 w-4" />}
-              title="Bullet List"
-            />
-            <ToolbarButton
-              onClick={() => applyList('number')}
-              isActive={currentFormat.listType === 'number'}
-              icon={<ListOrdered className="h-4 w-4" />}
-              title="Numbered List"
-            />
-            <ToolbarButton
-              onClick={() => applyList('check')}
-              isActive={currentFormat.listType === 'check'}
-              icon={<CheckSquare className="h-4 w-4" />}
-              title="Checklist"
-            />
-          </div>
-
-          {/* Alignment */}
-          <div className="flex items-center border-r border-gray-200 dark:border-gray-700 pr-2 mr-2">
-            <ToolbarButton
-              onClick={() => applyFormat({ alignment: 'left' })}
-              isActive={currentFormat.alignment === 'left'}
-              icon={<AlignLeft className="h-4 w-4" />}
-              title="Align Left"
-            />
-            <ToolbarButton
-              onClick={() => applyFormat({ alignment: 'center' })}
-              isActive={currentFormat.alignment === 'center'}
-              icon={<AlignCenter className="h-4 w-4" />}
-              title="Align Center"
-            />
-            <ToolbarButton
-              onClick={() => applyFormat({ alignment: 'right' })}
-              isActive={currentFormat.alignment === 'right'}
-              icon={<AlignRight className="h-4 w-4" />}
-              title="Align Right"
-            />
-            <ToolbarButton
-              onClick={() => applyFormat({ alignment: 'justify' })}
-              isActive={currentFormat.alignment === 'justify'}
-              icon={<AlignJustify className="h-4 w-4" />}
-              title="Justify"
-            />
-          </div>
-
-          {/* Special Elements */}
-          <div className="flex items-center border-r border-gray-200 dark:border-gray-700 pr-2 mr-2">
-            <ToolbarButton
-              onClick={applyQuote}
-              isActive={currentFormat.quote}
-              icon={<Quote className="h-4 w-4" />}
-              title="Quote"
-            />
-            <ToolbarButton
-              onClick={applyCodeBlock}
-              icon={<Code className="h-4 w-4" />}
-              title="Code Block"
-            />
-            <ToolbarButton
-              onClick={insertHorizontalRule}
-              icon={<Minus className="h-4 w-4" />}
-              title="Horizontal Rule"
-            />
-            <ToolbarButton
-              onClick={insertTable}
-              icon={<Table className="h-4 w-4" />}
-              title="Insert Table"
-            />
-          </div>
-
-          {/* Links and Colors */}
-          <div className="flex items-center border-r border-gray-200 dark:border-gray-700 pr-2 mr-2">
-            <ToolbarButton
-              onClick={applyLink}
-              icon={<Link className="h-4 w-4" />}
-              title="Insert Link"
-            />
-            
-            <div className="relative" ref={colorPickerRef}>
-              <ToolbarButton
-                onClick={() => setShowColorPicker(!showColorPicker)}
-                icon={<Palette className="h-4 w-4" />}
-                title="Text Color"
-              />
-              {showColorPicker && (
-                <ColorPicker onColorSelect={(color) => applyFormat({ color })} />
-              )}
-            </div>
-          </div>
-
-          {/* Font Selection */}
-          <div className="relative" ref={fontPickerRef}>
-            <ToolbarButton
-              onClick={() => setShowFontPicker(!showFontPicker)}
-              icon={<Type className="h-4 w-4" />}
-              title="Font Family"
-            />
-            {showFontPicker && (
-              <FontPicker onFontSelect={(font) => applyFormat({ fontFamily: font })} />
-            )}
-          </div>
-
-          {/* Clear Formatting */}
-          <div className="flex items-center">
-            <ToolbarButton
-              onClick={clearFormatting}
-              icon={<MoreHorizontal className="h-4 w-4" />}
-              title="Clear Formatting"
-            />
-          </div>
-        </div>
+      <div className="flex items-center space-x-1 p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-t-lg">
+        <button
+          onClick={() => toggleFormat('bold')}
+          className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+          title="Bold"
+        >
+          <Bold className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => toggleFormat('italic')}
+          className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+          title="Italic"
+        >
+          <Italic className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => toggleFormat('underline')}
+          className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+          title="Underline"
+        >
+          <Underline className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => toggleFormat('strikethrough')}
+          className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+          title="Strikethrough"
+        >
+          <Strikethrough className="w-4 h-4" />
+        </button>
+        
+        <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
+        
+        <button
+          onClick={() => insertHeading(1)}
+          className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+          title="Heading 1"
+        >
+          <Heading1 className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => insertHeading(2)}
+          className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+          title="Heading 2"
+        >
+          <Heading2 className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => insertHeading(3)}
+          className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+          title="Heading 3"
+        >
+          <Heading3 className="w-4 h-4" />
+        </button>
+        
+        <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
+        
+        <button
+          onClick={() => insertList(false)}
+          className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+          title="Bullet List"
+        >
+          <List className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => insertList(true)}
+          className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+          title="Numbered List"
+        >
+          <ListOrdered className="w-4 h-4" />
+        </button>
+        
+        <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
+        
+        <button
+          onClick={() => toggleFormat('code')}
+          className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+          title="Code"
+        >
+          <Code className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => setShowLinkDialog(true)}
+          className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+          title="Insert Link"
+        >
+          <Link className="w-4 h-4" />
+        </button>
+        
+        <div className="flex-1" />
+        
+        <button
+          onClick={clearFormatting}
+          className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
+          title="Clear Formatting"
+        >
+          <Type className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Editor */}
@@ -404,24 +221,61 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         ref={editorRef}
         contentEditable
         onInput={handleInput}
-        onSelect={handleSelectionChange}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setIsFocused(false)}
-        className={`min-h-[200px] p-4 focus:outline-none ${
-          isFocused ? 'ring-2 ring-blue-500' : ''
-        }`}
-        style={{ minHeight: '200px' }}
+        onSelect={handleSelection}
+        className="min-h-[200px] p-4 focus:outline-none bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+        style={{ whiteSpace: 'pre-wrap' }}
         data-placeholder={placeholder}
-        suppressContentEditableWarning={true}
       />
 
-      <style jsx>{`
-        [contenteditable]:empty:before {
-          content: attr(data-placeholder);
-          color: #9ca3af;
-          pointer-events: none;
-        }
-      `}</style>
+      {/* Link Dialog */}
+      {showLinkDialog && (
+        <div className="absolute inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-900 rounded-lg p-4 w-96">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Insert Link</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Text
+                </label>
+                <input
+                  type="text"
+                  value={selectedText}
+                  onChange={(e) => setSelectedText(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  placeholder="Link text"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  URL
+                </label>
+                <input
+                  type="url"
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                  placeholder="https://example.com"
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <button
+                  onClick={() => setShowLinkDialog(false)}
+                  className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={insertLink}
+                  disabled={!selectedText || !linkUrl}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Insert Link
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

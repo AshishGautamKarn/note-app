@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f0f8ff;
+        }
+        h1 { color: #0066cc; }
+        .success { 
+            background: #d4edda; 
+            padding: 20px; 
+            border-radius: 8px; 
+            border-left: 4px solid #28a745;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎉 Server is Working!</h1>
+    <div class="success">
+        <p><strong>Great!</strong> If you can see this page, your Vite development server is running correctly.</p>
+        <p><strong>Test URL:</strong> <a href="http://localhost:3000/test.html">http://localhost:3000/test.html</a></p>
+        <p><strong>Main App:</strong> <a href="http://localhost:3000">http://localhost:3000</a></p>
+    </div>
+    
+    <h2>🔍 Debug Information</h2>
+    <ul>
+        <li>Current Time: <span id="time"></span></li>
+        <li>User Agent: <span id="ua"></span></li>
+        <li>Page URL: <span id="url"></span></li>
+    </ul>
+
+    <script>
+        document.getElementById('time').textContent = new Date().toLocaleString();
+        document.getElementById('ua').textContent = navigator.userAgent;
+        document.getElementById('url').textContent = window.location.href;
+        console.log('✅ Test page JavaScript is working!');
+    </script>
+</body>
+</html>
