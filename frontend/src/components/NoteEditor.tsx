@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { useMutation, useQueryClient, useQuery } from 'react-query'
-import { X, Save, Trash2, Folder, Mic, Star, Archive } from 'lucide-react'
+import { X, Save, Trash2, Folder, Mic, Star, Archive, Users } from 'lucide-react'
 import AudioRecorder from './AudioRecorder'
 import TagsInput from './TagsInput'
+import CollaborationPanel from './CollaborationPanel'
+import RichTextEditor from './RichTextEditor'
 
 interface NoteEditorProps {
   noteId: number | null
@@ -28,6 +30,7 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ noteId, onClose }) => {
   const [tags, setTags] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [showAudioRecorder, setShowAudioRecorder] = useState(false)
+  const [showCollaboration, setShowCollaboration] = useState(false)
   const queryClient = useQueryClient()
 
   // Fetch folders for dropdown
@@ -59,8 +62,16 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ noteId, onClose }) => {
         .catch(err => console.error('Failed to load note:', err))
         .finally(() => setIsLoading(false))
     } else {
+      // Check for template content
+      const templateContent = localStorage.getItem('note-app-template-content')
+      if (templateContent) {
+        setContent(templateContent)
+        localStorage.removeItem('note-app-template-content')
+      } else {
+        setContent('')
+      }
+      
       setTitle('')
-      setContent('')
       setFolderId(null)
       setIsFavorite(false)
       setIsArchived(false)
@@ -180,13 +191,22 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ noteId, onClose }) => {
           </h2>
           <div className="flex items-center space-x-2">
             {noteId && noteId > 0 && (
-              <button
-                onClick={handleDelete}
-                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                title="Delete note"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <>
+                <button
+                  onClick={() => setShowCollaboration(true)}
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Collaborate"
+                >
+                  <Users className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Delete note"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </>
             )}
             <button
               onClick={onClose}
@@ -277,14 +297,13 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ noteId, onClose }) => {
             />
           </div>
 
-          {/* Content Textarea */}
+          {/* Rich Text Editor */}
           <div className="flex-1">
-            <textarea
-              placeholder="Start writing your note..."
+            <RichTextEditor
               value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="w-full h-full border-none outline-none resize-none placeholder-gray-400"
-              style={{ minHeight: '300px' }}
+              onChange={setContent}
+              placeholder="Start writing your note..."
+              className="h-full"
             />
           </div>
         </div>
@@ -322,6 +341,21 @@ const NoteEditor: React.FC<NoteEditorProps> = ({ noteId, onClose }) => {
         <AudioRecorder
           onTranscriptionComplete={handleTranscriptionComplete}
           onClose={() => setShowAudioRecorder(false)}
+        />
+      )}
+
+      {/* Collaboration Panel Modal */}
+      {showCollaboration && noteId && noteId > 0 && (
+        <CollaborationPanel
+          isOpen={showCollaboration}
+          onClose={() => setShowCollaboration(false)}
+          noteId={noteId}
+          noteTitle={title || 'Untitled Note'}
+          currentUser={{
+            id: 'current-user',
+            name: 'Current User',
+            email: 'user@example.com'
+          }}
         />
       )}
     </div>
