@@ -1,15 +1,18 @@
 import React, { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from 'react-query'
-import { Plus, Search, Edit3, Trash2, Star, Folder, FolderOpen, Sun, Moon, Keyboard, Archive, Download, FileText, BarChart3 } from 'lucide-react'
+import { Plus, Search, Edit3, Trash2, Star, Folder, FolderOpen, Sun, Moon, Keyboard, Archive, Download, FileText, BarChart3, Activity } from 'lucide-react'
 import { useTheme } from '../contexts/ThemeContext'
 import NoteEditor from '../components/NoteEditor'
 import ExportImport from '../components/ExportImport'
 import NoteTemplates from '../components/NoteTemplates'
 import AnalyticsDashboard from '../components/AnalyticsDashboard'
+import PerformanceDashboard from '../components/PerformanceDashboard'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
+import { useDebounce } from '../hooks/useDebounce'
 import { ExportData } from '../services/exportImport'
 import { NoteTemplate } from '../services/noteTemplates'
 import { AnalyticsService, AnalyticsData } from '../services/analytics'
+import { PerformanceService } from '../services/performance'
 
 interface Note {
   id: number
@@ -50,9 +53,13 @@ const HomePage: React.FC = () => {
   const [showExportImport, setShowExportImport] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   const [showAnalytics, setShowAnalytics] = useState(false)
+  const [showPerformance, setShowPerformance] = useState(false)
   const { theme, toggleTheme } = useTheme()
   const queryClient = useQueryClient()
   const searchInputRef = useRef<HTMLInputElement>(null)
+  
+  // Debounced search query
+  const debouncedSearchQuery = useDebounce(searchQuery, 300)
 
   // Fetch notes
   const { data: notes = [], isLoading: notesLoading } = useQuery<Note[]>(
@@ -171,10 +178,10 @@ const HomePage: React.FC = () => {
   // Calculate analytics data
   const analyticsData: AnalyticsData = AnalyticsService.calculateAnalytics(notes, folders)
 
-  // Filter notes based on search and folder
+  // Filter notes based on search and folder (using debounced search)
   const filteredNotes = notes.filter(note => {
-    const matchesSearch = note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         note.content.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesSearch = note.title.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+                         note.content.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
     const matchesFolder = selectedFolderId === null || note.folder_id === selectedFolderId
     const matchesFavorites = !showFavorites || note.is_favorite
     const matchesArchived = !showArchived || note.is_archived
@@ -258,13 +265,20 @@ const HomePage: React.FC = () => {
               >
                 <FileText className="w-5 h-5" />
               </button>
-              <button
-                onClick={() => setShowAnalytics(true)}
-                className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                title="Analytics dashboard"
-              >
-                <BarChart3 className="w-5 h-5" />
-              </button>
+                  <button
+                    onClick={() => setShowAnalytics(true)}
+                    className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    title="Analytics dashboard"
+                  >
+                    <BarChart3 className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => setShowPerformance(true)}
+                    className="p-2 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    title="Performance dashboard"
+                  >
+                    <Activity className="w-5 h-5" />
+                  </button>
               <button 
                 onClick={handleNewNote}
                 className="btn btn-primary"
@@ -490,16 +504,23 @@ const HomePage: React.FC = () => {
           />
         )}
 
-        {/* Analytics Dashboard Modal */}
-        {showAnalytics && (
-          <AnalyticsDashboard
-            data={analyticsData}
-            onClose={() => setShowAnalytics(false)}
-          />
-        )}
+          {/* Analytics Dashboard Modal */}
+          {showAnalytics && (
+            <AnalyticsDashboard
+              data={analyticsData}
+              onClose={() => setShowAnalytics(false)}
+            />
+          )}
 
-      </div>
-    )
-  }
+          {/* Performance Dashboard Modal */}
+          {showPerformance && (
+            <PerformanceDashboard
+              onClose={() => setShowPerformance(false)}
+            />
+          )}
 
-  export default HomePage
+        </div>
+      )
+    }
+
+    export default HomePage

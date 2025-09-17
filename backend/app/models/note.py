@@ -17,14 +17,20 @@ class Note(Base):
     title = Column(String(255), nullable=False, index=True)
     content = Column(Text, nullable=True)
     folder_id = Column(Integer, ForeignKey("folders.id"), nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     tags = Column(JSON, nullable=True)  # Store as JSON array
     is_favorite = Column(Boolean, default=False, index=True)
     is_archived = Column(Boolean, default=False, index=True)
+    is_encrypted = Column(Boolean, default=False)
+    encryption_key = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Relationships
     folder = relationship("Folder", back_populates="notes")
+    owner = relationship("User", back_populates="notes")
+    shares = relationship("NoteShare", back_populates="note", cascade="all, delete-orphan")
+    comments = relationship("Comment", back_populates="note", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Note(id={self.id}, title='{self.title}', folder_id={self.folder_id})>"
@@ -37,9 +43,12 @@ class Note(Base):
             "content": self.content,
             "folder_id": self.folder_id,
             "folder_name": self.folder.name if self.folder else None,
+            "owner_id": self.owner_id,
+            "owner_name": self.owner.username if self.owner else None,
             "tags": self.tags or [],
             "is_favorite": self.is_favorite,
             "is_archived": self.is_archived,
+            "is_encrypted": self.is_encrypted,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "word_count": len(self.content.split()) if self.content else 0,

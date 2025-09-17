@@ -1,62 +1,57 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface UseLazyLoadingOptions {
-  threshold?: number
   rootMargin?: string
+  threshold?: number
   triggerOnce?: boolean
-  skip?: boolean
 }
 
-interface UseLazyLoadingReturn {
-  ref: React.RefObject<HTMLElement>
-  isVisible: boolean
-  hasBeenVisible: boolean
-}
-
-export const useLazyLoading = (options: UseLazyLoadingOptions = {}): UseLazyLoadingReturn => {
+export const useLazyLoading = (options: UseLazyLoadingOptions = {}) => {
   const {
+    rootMargin = '50px',
     threshold = 0.1,
-    rootMargin = '0px',
-    triggerOnce = true,
-    skip = false
+    triggerOnce = true
   } = options
 
   const [isVisible, setIsVisible] = useState(false)
-  const [hasBeenVisible, setHasBeenVisible] = useState(false)
-  const ref = useRef<HTMLElement>(null)
-
-  const handleIntersection = useCallback((entries: IntersectionObserverEntry[]) => {
-    const [entry] = entries
-    
-    if (entry.isIntersecting) {
-      setIsVisible(true)
-      if (!hasBeenVisible) {
-        setHasBeenVisible(true)
-      }
-    } else if (!triggerOnce) {
-      setIsVisible(false)
-    }
-  }, [triggerOnce, hasBeenVisible])
+  const [hasTriggered, setHasTriggered] = useState(false)
+  const elementRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
-    if (skip || !ref.current) return
+    const element = elementRef.current
+    if (!element) return
 
-    const observer = new IntersectionObserver(handleIntersection, {
-      threshold,
-      rootMargin
-    })
+    // If triggerOnce is true and we've already triggered, don't observe again
+    if (triggerOnce && hasTriggered) return
 
-    observer.observe(ref.current)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true)
+          if (triggerOnce) {
+            setHasTriggered(true)
+            observer.unobserve(element)
+          }
+        } else if (!triggerOnce) {
+          setIsVisible(false)
+        }
+      },
+      {
+        rootMargin,
+        threshold
+      }
+    )
+
+    observer.observe(element)
 
     return () => {
-      observer.disconnect()
+      observer.unobserve(element)
     }
-  }, [handleIntersection, threshold, rootMargin, skip])
+  }, [rootMargin, threshold, triggerOnce, hasTriggered])
 
   return {
-    ref,
-    isVisible,
-    hasBeenVisible
+    elementRef,
+    isVisible: triggerOnce ? (isVisible || hasTriggered) : isVisible
   }
 }
 

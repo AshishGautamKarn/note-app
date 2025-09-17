@@ -4,54 +4,30 @@ interface UseVirtualScrollingOptions {
   itemHeight: number
   containerHeight: number
   overscan?: number
-  totalItems: number
 }
 
-interface UseVirtualScrollingReturn {
-  containerRef: React.RefObject<HTMLDivElement>
-  scrollTop: number
-  visibleItems: Array<{
-    index: number
-    top: number
-    height: number
-  }>
-  totalHeight: number
-  scrollToIndex: (index: number) => void
-  scrollToTop: () => void
-  scrollToBottom: () => void
-}
-
-export const useVirtualScrolling = (options: UseVirtualScrollingOptions): UseVirtualScrollingReturn => {
-  const {
-    itemHeight,
-    containerHeight,
-    overscan = 5,
-    totalItems
-  } = options
-
+export const useVirtualScrolling = <T>(
+  items: T[],
+  options: UseVirtualScrollingOptions
+) => {
+  const { itemHeight, containerHeight, overscan = 5 } = options
   const [scrollTop, setScrollTop] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const totalHeight = totalItems * itemHeight
+  const totalHeight = items.length * itemHeight
+  const visibleCount = Math.ceil(containerHeight / itemHeight)
+  const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan)
+  const endIndex = Math.min(
+    items.length - 1,
+    startIndex + visibleCount + overscan * 2
+  )
 
-  const visibleItems = (() => {
-    const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan)
-    const endIndex = Math.min(
-      totalItems - 1,
-      Math.ceil((scrollTop + containerHeight) / itemHeight) + overscan
-    )
+  const visibleItems = items.slice(startIndex, endIndex + 1).map((item, index) => ({
+    item,
+    index: startIndex + index
+  }))
 
-    const items = []
-    for (let i = startIndex; i <= endIndex; i++) {
-      items.push({
-        index: i,
-        top: i * itemHeight,
-        height: itemHeight
-      })
-    }
-
-    return items
-  })()
+  const offsetY = startIndex * itemHeight
 
   const handleScroll = useCallback((e: Event) => {
     const target = e.target as HTMLDivElement
@@ -66,31 +42,12 @@ export const useVirtualScrolling = (options: UseVirtualScrollingOptions): UseVir
     return () => container.removeEventListener('scroll', handleScroll)
   }, [handleScroll])
 
-  const scrollToIndex = useCallback((index: number) => {
-    const container = containerRef.current
-    if (!container) return
-
-    const targetScrollTop = index * itemHeight
-    container.scrollTop = targetScrollTop
-    setScrollTop(targetScrollTop)
-  }, [itemHeight])
-
-  const scrollToTop = useCallback(() => {
-    scrollToIndex(0)
-  }, [scrollToIndex])
-
-  const scrollToBottom = useCallback(() => {
-    scrollToIndex(totalItems - 1)
-  }, [scrollToIndex, totalItems])
-
   return {
     containerRef,
-    scrollTop,
-    visibleItems,
     totalHeight,
-    scrollToIndex,
-    scrollToTop,
-    scrollToBottom
+    visibleItems,
+    offsetY,
+    scrollTop
   }
 }
 
